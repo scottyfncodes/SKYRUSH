@@ -231,7 +231,15 @@ export class RaceSimulation {
       racer.input.boost = playerInput.boost;
       racer.input.airbrake = playerInput.airbrake;
     } else if (config.ai) {
-      computeAiInput(flight, racer.params, this.circuit, racer.nextGate, config.ai, racer.input, this.aiSkill);
+      computeAiInput(
+        flight,
+        racer.params,
+        this.circuit,
+        racer.nextGate,
+        config.ai,
+        racer.input,
+        this.aiSkill,
+      );
     }
 
     racer.previousPosition.copy(flight.position);
@@ -355,7 +363,8 @@ export class RaceSimulation {
     if (racer.finished) return this.gateCount + 1;
     const gates = this.circuit.gates;
     const next = gates[Math.min(racer.nextGate, gates.length - 1)]!;
-    const previousPoint = racer.nextGate === 0 ? this.circuit.spawn.position : gates[racer.nextGate - 1]!.position;
+    const previousPoint =
+      racer.nextGate === 0 ? this.circuit.spawn.position : gates[racer.nextGate - 1]!.position;
     const segment = Math.max(1, previousPoint.distanceTo(next.position));
     const remaining = racer.flight.position.distanceTo(next.position);
     return racer.nextGate + clamp01(1 - remaining / segment);

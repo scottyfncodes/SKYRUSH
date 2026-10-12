@@ -1,0 +1,614 @@
+import type { Object3D } from 'three';
+import {
+  AmbientLight,
+  BackSide,
+  BoxGeometry,
+  BufferAttribute,
+  CanvasTexture,
+  Color,
+  ConeGeometry,
+  CylinderGeometry,
+  DirectionalLight,
+  DoubleSide,
+  Fog,
+  Group,
+  HemisphereLight,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  PlaneGeometry,
+  Quaternion,
+  Scene,
+  ShaderMaterial,
+  SphereGeometry,
+  TorusGeometry,
+  Vector3,
+} from 'three';
+import type { Circuit, Landmark } from '../course/circuit';
+import type { GateDefinition } from '../course/gates';
+import { PALETTE } from './materials';
+import { hash2 } from '../core/rng';
+import { clamp01, smoothstep } from '../core/math';
+
+const TERRAIN_SIZE = 8000;
+const TERRAIN_CENTER = { x: 650, z: 500 };
+
+const skyVertex = /* glsl */ `
+  varying vec3 vWorldPosition;
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const skyFragment = /* glsl */ `
+  uniform vec3 topColor;
+  uniform vec3 horizonColor;
+  uniform vec3 sunDirection;
+  varying vec3 vWorldPosition;
+  void main() {
+    vec3 dir = normalize(vWorldPosition);
+    float h = clamp(dir.y, -0.05, 1.0);
+    float t = pow(1.0 - h, 2.2);
+    vec3 color = mix(topColor, horizonColor, t);
+    float sun = max(dot(dir, normalize(sunDirection)), 0.0);
+    color += vec3(1.0, 0.82, 0.55) * pow(sun, 180.0) * 0.9;
+    color += vec3(1.0, 0.7, 0.4) * pow(sun, 8.0) * 0.12;
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+export interface GateVisual {
+  gate: GateDefinition;
+  group: Group;
+  frameMaterial: MeshStandardMaterial;
+  stripMaterial: MeshBasicMaterial;
+  beacon: Mesh;
+  state: 'next' | 'upcoming' | 'passed' | 'missed';
+  flash: number;
+}
+
+export interface WorldHandles {
+  scene: Scene;
+  sun: DirectionalLight;
+  gates: GateVisual[];
+  update: (dt: number, focus: Vector3) => void;
+  setGateStates: (nextGate: number, missed: Set<number>) => void;
+  dispose: () => void;
+}
+
+const terrainColor = (height: number, slope: number, x: number, z: number, target: Color): Color => {
+  const sand = new Color(PALETTE.sand);
+  const rock = new Color(PALETTE.rock);
+  const dark = new Color(PALETTE.rockDark);
+  const snow = new Color(PALETTE.snow);
+  const noise = hash2(Math.floor(x / 23), Math.floor(z / 23)) * 0.1 - 0.05;
+  const scrub = new Color(0x8f8a63);
+  const band = hash2(Math.floor(x / 90), Math.floor(z / 90));
+  target.copy(sand);
+  target.lerp(scrub, smoothstep(0.55, 0.9, band) * 0.5 * (1 - smoothstep(20, 60, height)));
+  const rockMix = smoothstep(14, 80, height) * 0.75 + smoothstep(0.2, 0.55, slope) * 0.7;
+  target.lerp(rock, clamp01(rockMix));
+  target.lerp(dark, smoothstep(0.5, 0.9, slope) * 0.75);
+  target.lerp(snow, smoothstep(420, 620, height) * (1 - smoothstep(0.4, 0.8, slope)));
+  target.offsetHSL(0, 0, noise);
+  return target;
+};
+
+const makeLabelTexture = (text: string, color: string): CanvasTexture => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = 'rgba(14, 18, 26, 0.92)';
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(6, 6, 244, 116);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 84px "Segoe UI", Helvetica, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 70);
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.anisotropy = 4;
+  return texture;
+};
+
+export const createWorld = (circuit: Circuit, options: { shadows: boolean }): WorldHandles => {
+  const scene = new Scene();
+  scene.background = new Color(PALETTE.fog);
+  scene.fog = new Fog(PALETTE.fog, 900, 5200);
+
+  const disposables: { dispose: () => void }[] = [];
+
+  // --- Lights ---------------------------------------------------------------------
+  const hemisphere = new HemisphereLight(0xcfe3ff, 0x6b5440, 0.75);
+  scene.add(hemisphere);
+  const ambient = new AmbientLight(0xffffff, 0.12);
+  scene.add(ambient);
+  const sun = new DirectionalLight(0xfff0d8, 2.6);
+  sun.position.set(-600, 900, -300);
+  sun.castShadow = options.shadows;
+  if (options.shadows) {
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 50;
+    sun.shadow.camera.far = 2600;
+    sun.shadow.camera.left = -90;
+    sun.shadow.camera.right = 90;
+    sun.shadow.camera.top = 90;
+    sun.shadow.camera.bottom = -90;
+    sun.shadow.bias = -0.0008;
+    sun.shadow.normalBias = 0.6;
+  }
+  scene.add(sun);
+  scene.add(sun.target);
+
+  // --- Sky --------------------------------------------------------------------------
+  const skyMaterial = new ShaderMaterial({
+    uniforms: {
+      topColor: { value: new Color(PALETTE.skyTop) },
+      horizonColor: { value: new Color(PALETTE.skyHorizon) },
+      sunDirection: { value: sun.position.clone().normalize() },
+    },
+    vertexShader: skyVertex,
+    fragmentShader: skyFragment,
+    side: BackSide,
+    depthWrite: false,
+    fog: false,
+  });
+  const sky = new Mesh(new SphereGeometry(6000, 32, 16), skyMaterial);
+  sky.frustumCulled = false;
+  scene.add(sky);
+  disposables.push(sky.geometry, skyMaterial);
+
+  // --- Terrain -----------------------------------------------------------------------
+  const segments = 240;
+  const terrainGeometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, segments, segments);
+  terrainGeometry.rotateX(-Math.PI / 2);
+  const positions = terrainGeometry.attributes.position as BufferAttribute;
+  for (let i = 0; i < positions.count; i += 1) {
+    const x = positions.getX(i) + TERRAIN_CENTER.x;
+    const z = positions.getZ(i) + TERRAIN_CENTER.z;
+    positions.setXYZ(i, x, circuit.terrain.heightAt(x, z), z);
+  }
+  terrainGeometry.computeVertexNormals();
+  // Colour from height and the computed normal, so no extra height samples are needed.
+  const normals = terrainGeometry.attributes.normal as BufferAttribute;
+  const colors = new Float32Array(positions.count * 3);
+  const color = new Color();
+  for (let i = 0; i < positions.count; i += 1) {
+    const slope = clamp01((1 - normals.getY(i)) * 1.6);
+    terrainColor(positions.getY(i), slope, positions.getX(i), positions.getZ(i), color);
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  terrainGeometry.setAttribute('color', new BufferAttribute(colors, 3));
+  const terrainMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02 });
+  const terrain = new Mesh(terrainGeometry, terrainMaterial);
+  terrain.receiveShadow = options.shadows;
+  scene.add(terrain);
+  disposables.push(terrainGeometry, terrainMaterial);
+
+  // --- Course markers: ground chevrons under the route ------------------------------------
+  const markerGeometry = new BoxGeometry(5, 0.6, 2.4);
+  const markerMaterial = new MeshStandardMaterial({
+    color: PALETTE.warmWhite,
+    roughness: 0.8,
+    emissive: 0x332a1c,
+    emissiveIntensity: 0.3,
+  });
+  const markerCount = 260;
+  const markers = new InstancedMesh(markerGeometry, markerMaterial, markerCount);
+  const matrix = new Matrix4();
+  const quaternion = new Quaternion();
+  const scale = new Vector3(1, 1, 1);
+  const routePoints = [circuit.spawn.position, ...circuit.gates.map((g) => g.position)];
+  let placed = 0;
+  for (let i = 0; i < routePoints.length - 1 && placed < markerCount; i += 1) {
+    const a = routePoints[i]!;
+    const b = routePoints[i + 1]!;
+    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    const count = Math.max(2, Math.floor(length / 70));
+    const heading = Math.atan2(b.x - a.x, b.z - a.z);
+    quaternion.setFromAxisAngle(new Vector3(0, 1, 0), heading);
+    for (let j = 0; j < count && placed < markerCount; j += 1) {
+      const t = j / count;
+      const x = a.x + (b.x - a.x) * t;
+      const z = a.z + (b.z - a.z) * t;
+      const y = circuit.terrain.heightAt(x, z) + 0.4;
+      matrix.compose(new Vector3(x, y, z), quaternion, scale);
+      markers.setMatrixAt(placed, matrix);
+      placed += 1;
+    }
+  }
+  markers.count = placed;
+  markers.instanceMatrix.needsUpdate = true;
+  scene.add(markers);
+  disposables.push(markerGeometry, markerMaterial);
+
+  // --- Gates -------------------------------------------------------------------------------
+  const gates: GateVisual[] = circuit.gates.map((gate) =>
+    createGateVisual(gate, circuit, scene, disposables),
+  );
+
+  // --- Landmarks and facility -----------------------------------------------------------------
+  const landmarks = new Group();
+  for (const landmark of circuit.landmarks) {
+    const object = createLandmark(landmark, circuit, disposables);
+    landmarks.add(object);
+  }
+  scene.add(landmarks);
+
+  // Start line banner across the spawn.
+  const startLine = createStartLine(circuit, disposables);
+  scene.add(startLine);
+
+  const setGateStates = (nextGate: number, missed: Set<number>): void => {
+    for (const visual of gates) {
+      const index = visual.gate.index;
+      const state: GateVisual['state'] =
+        index === nextGate
+          ? 'next'
+          : index < nextGate
+            ? missed.has(index)
+              ? 'missed'
+              : 'passed'
+            : 'upcoming';
+      if (state !== visual.state) {
+        visual.state = state;
+        applyGateState(visual);
+      }
+    }
+  };
+
+  let time = 0;
+  const update = (dt: number, focus: Vector3): void => {
+    time += dt;
+    sun.target.position.copy(focus);
+    sun.position.copy(focus).add(new Vector3(-600, 900, -300));
+    sky.position.copy(focus);
+    for (const visual of gates) {
+      if (visual.state === 'next') {
+        const pulse = 0.65 + 0.35 * Math.sin(time * 4);
+        visual.stripMaterial.opacity = pulse;
+        visual.beacon.scale.setScalar(1 + 0.15 * Math.sin(time * 6));
+      }
+      if (visual.flash > 0) {
+        visual.flash = Math.max(0, visual.flash - dt);
+      }
+    }
+  };
+
+  return {
+    scene,
+    sun,
+    gates,
+    update,
+    setGateStates,
+    dispose: () => {
+      disposables.forEach((d) => d.dispose());
+      scene.clear();
+    },
+  };
+};
+
+const GATE_COLORS = {
+  next: { frame: PALETTE.amber, strip: PALETTE.amber, emissive: 0.9 },
+  upcoming: { frame: 0x5f6c7a, strip: PALETTE.cyan, emissive: 0.35 },
+  passed: { frame: 0x3a4149, strip: 0x56606b, emissive: 0.08 },
+  missed: { frame: 0x5a2a28, strip: PALETTE.red, emissive: 0.5 },
+} as const;
+
+const applyGateState = (visual: GateVisual): void => {
+  const colors = GATE_COLORS[visual.state];
+  visual.frameMaterial.color.setHex(colors.frame);
+  visual.frameMaterial.emissive.setHex(colors.strip);
+  visual.frameMaterial.emissiveIntensity = colors.emissive * 0.35;
+  visual.stripMaterial.color.setHex(colors.strip);
+  visual.stripMaterial.opacity = visual.state === 'next' ? 1 : visual.state === 'upcoming' ? 0.75 : 0.35;
+  visual.beacon.visible = visual.state === 'next';
+};
+
+const createGateVisual = (
+  gate: GateDefinition,
+  circuit: Circuit,
+  scene: Scene,
+  disposables: { dispose: () => void }[],
+): GateVisual => {
+  const group = new Group();
+  group.position.copy(gate.position);
+  group.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), gate.normal);
+
+  const width = gate.halfWidth * 2;
+  const height = gate.halfHeight * 2;
+  const beam = 2.4;
+  const frameMaterial = new MeshStandardMaterial({
+    color: 0x5f6c7a,
+    roughness: 0.5,
+    metalness: 0.6,
+    emissive: 0x000000,
+  });
+  const stripMaterial = new MeshBasicMaterial({
+    color: PALETTE.cyan,
+    transparent: true,
+    opacity: 0.75,
+    side: DoubleSide,
+  });
+  disposables.push(frameMaterial, stripMaterial);
+
+  const postGeometry = new BoxGeometry(beam, height + beam, beam);
+  const barGeometry = new BoxGeometry(width + beam, beam, beam);
+  disposables.push(postGeometry, barGeometry);
+  const left = new Mesh(postGeometry, frameMaterial);
+  left.position.set(-gate.halfWidth, 0, 0);
+  const right = new Mesh(postGeometry, frameMaterial);
+  right.position.set(gate.halfWidth, 0, 0);
+  const top = new Mesh(barGeometry, frameMaterial);
+  top.position.set(0, gate.halfHeight, 0);
+  const bottom = new Mesh(barGeometry, frameMaterial);
+  bottom.position.set(0, -gate.halfHeight, 0);
+  group.add(left, right, top, bottom);
+
+  // Inner light strips on the approach face.
+  const stripGeometry = new PlaneGeometry(width - beam, beam * 0.45);
+  const sideStripGeometry = new PlaneGeometry(beam * 0.45, height - beam);
+  disposables.push(stripGeometry, sideStripGeometry);
+  for (const face of [-1, 1]) {
+    const topStrip = new Mesh(stripGeometry, stripMaterial);
+    topStrip.position.set(0, gate.halfHeight, face * beam * 0.51);
+    const bottomStrip = new Mesh(stripGeometry, stripMaterial);
+    bottomStrip.position.set(0, -gate.halfHeight, face * beam * 0.51);
+    const leftStrip = new Mesh(sideStripGeometry, stripMaterial);
+    leftStrip.position.set(-gate.halfWidth, 0, face * beam * 0.51);
+    const rightStrip = new Mesh(sideStripGeometry, stripMaterial);
+    rightStrip.position.set(gate.halfWidth, 0, face * beam * 0.51);
+    group.add(topStrip, bottomStrip, leftStrip, rightStrip);
+  }
+
+  // Corner chevrons for silhouette.
+  const chevronGeometry = new BoxGeometry(beam * 2.2, beam * 0.8, beam * 1.2);
+  disposables.push(chevronGeometry);
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const chevron = new Mesh(chevronGeometry, frameMaterial);
+      chevron.position.set(sx * (gate.halfWidth - beam * 0.6), sy * (gate.halfHeight + beam * 0.3), 0);
+      group.add(chevron);
+    }
+  }
+
+  // Number panel above the gate, facing the approach.
+  const label = makeLabelTexture(gate.label, gate.kind === 'finish' ? '#ffa524' : '#f3eee4');
+  const labelMaterial = new MeshBasicMaterial({ map: label, transparent: false });
+  const labelGeometry = new PlaneGeometry(
+    gate.kind === 'finish' || gate.kind === 'start' ? 14 : 9,
+    gate.kind === 'finish' || gate.kind === 'start' ? 7 : 4.5,
+  );
+  disposables.push(label, labelMaterial, labelGeometry);
+  const panel = new Mesh(labelGeometry, labelMaterial);
+  panel.position.set(0, gate.halfHeight + 5.5, -0.2);
+  panel.rotation.y = Math.PI; // face -Z (the approach side)
+  group.add(panel);
+
+  // Support pylons down to the ground anchor the gate in the landscape.
+  const groundLeft = circuit.terrain.heightAt(
+    gate.position.x - gate.right.x * gate.halfWidth,
+    gate.position.z - gate.right.z * gate.halfWidth,
+  );
+  const groundRight = circuit.terrain.heightAt(
+    gate.position.x + gate.right.x * gate.halfWidth,
+    gate.position.z + gate.right.z * gate.halfWidth,
+  );
+  const pylonMaterial = new MeshStandardMaterial({ color: 0x3c434c, roughness: 0.7, metalness: 0.5 });
+  disposables.push(pylonMaterial);
+  for (const [sx, ground] of [
+    [-1, groundLeft],
+    [1, groundRight],
+  ] as const) {
+    const bottomY = ground - gate.position.y - 2;
+    const topY = -gate.halfHeight;
+    const length = topY - bottomY;
+    if (length > 2) {
+      const pylonGeometry = new CylinderGeometry(0.5, 1.4, length, 8);
+      disposables.push(pylonGeometry);
+      const pylon = new Mesh(pylonGeometry, pylonMaterial);
+      pylon.position.set(sx * gate.halfWidth, bottomY + length / 2, 0);
+      group.add(pylon);
+    }
+  }
+
+  // Beacon ring that pulses on the next gate.
+  const beaconGeometry = new TorusGeometry(3.2, 0.5, 8, 24);
+  disposables.push(beaconGeometry);
+  const beacon = new Mesh(beaconGeometry, stripMaterial);
+  beacon.position.set(0, gate.halfHeight + 12, 0);
+  beacon.visible = false;
+  group.add(beacon);
+
+  scene.add(group);
+  const visual: GateVisual = {
+    gate,
+    group,
+    frameMaterial,
+    stripMaterial,
+    beacon,
+    state: 'upcoming',
+    flash: 0,
+  };
+  applyGateState(visual);
+  return visual;
+};
+
+const createStartLine = (circuit: Circuit, disposables: { dispose: () => void }[]): Object3D => {
+  const group = new Group();
+  const position = circuit.spawn.position;
+  const ground = circuit.terrain.heightAt(position.x, position.z);
+  const material = new MeshStandardMaterial({ color: PALETTE.graphite, roughness: 0.6, metalness: 0.5 });
+  const accent = new MeshBasicMaterial({ color: PALETTE.amber });
+  disposables.push(material, accent);
+  const padGeometry = new BoxGeometry(140, 1.2, 60);
+  const stripeGeometry = new BoxGeometry(140, 0.4, 3);
+  disposables.push(padGeometry, stripeGeometry);
+  const pad = new Mesh(padGeometry, material);
+  pad.position.set(position.x, ground + 0.6, position.z - 20);
+  group.add(pad);
+  for (let i = 0; i < 6; i += 1) {
+    const stripe = new Mesh(stripeGeometry, accent);
+    stripe.position.set(position.x, ground + 1.5, position.z - 44 + i * 9);
+    group.add(stripe);
+  }
+  // Towers framing the start.
+  const towerGeometry = new BoxGeometry(6, 70, 6);
+  disposables.push(towerGeometry);
+  for (const side of [-1, 1]) {
+    const tower = new Mesh(towerGeometry, material);
+    tower.position.set(position.x + side * 64, ground + 35, position.z - 20);
+    group.add(tower);
+    const light = new Mesh(new SphereGeometry(1.8, 10, 8), accent);
+    light.position.set(position.x + side * 64, ground + 72, position.z - 20);
+    group.add(light);
+  }
+  return group;
+};
+
+const createLandmark = (
+  landmark: Landmark,
+  circuit: Circuit,
+  disposables: { dispose: () => void }[],
+): Object3D => {
+  const group = new Group();
+  const ground = circuit.terrain.heightAt(landmark.x, landmark.z);
+  group.position.set(landmark.x, ground, landmark.z);
+  group.rotation.y = landmark.rotation ?? 0;
+  const scale = landmark.scale ?? 1;
+  const graphite = new MeshStandardMaterial({ color: PALETTE.graphite, roughness: 0.6, metalness: 0.45 });
+  const warm = new MeshStandardMaterial({ color: 0xbfb3a2, roughness: 0.75, metalness: 0.2 });
+  const amber = new MeshStandardMaterial({
+    color: PALETTE.amber,
+    emissive: PALETTE.amber,
+    emissiveIntensity: 0.8,
+  });
+  const cyan = new MeshStandardMaterial({
+    color: PALETTE.cyan,
+    emissive: PALETTE.cyan,
+    emissiveIntensity: 0.8,
+  });
+  const rock = new MeshStandardMaterial({
+    color: 0x6e5a4b,
+    roughness: 0.95,
+    metalness: 0.02,
+    flatShading: true,
+  });
+  disposables.push(graphite, warm, amber, cyan, rock);
+
+  const add = (mesh: Mesh): void => {
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    group.add(mesh);
+    disposables.push(mesh.geometry);
+  };
+
+  switch (landmark.kind) {
+    case 'hangar': {
+      const w = 90 * scale;
+      const d = 140 * scale;
+      const h = 26 * scale;
+      const base = new Mesh(new BoxGeometry(w, h, d), warm);
+      base.position.y = h / 2;
+      add(base);
+      const roof = new Mesh(new CylinderGeometry(w / 2, w / 2, d, 24, 1, false, 0, Math.PI), graphite);
+      roof.rotation.z = Math.PI / 2;
+      roof.rotation.y = Math.PI / 2;
+      roof.position.y = h;
+      roof.scale.y = 1;
+      add(roof);
+      const stripe = new Mesh(new BoxGeometry(w + 0.5, 2, d * 0.9), amber);
+      stripe.position.y = h - 3;
+      add(stripe);
+      break;
+    }
+    case 'tower': {
+      const shaft = new Mesh(new CylinderGeometry(4, 6, 60, 12), graphite);
+      shaft.position.y = 30;
+      add(shaft);
+      const cab = new Mesh(new BoxGeometry(22, 10, 22), warm);
+      cab.position.y = 65;
+      add(cab);
+      const glass = new Mesh(new BoxGeometry(22.4, 4, 22.4), cyan);
+      glass.position.y = 66;
+      add(glass);
+      const mast = new Mesh(new CylinderGeometry(0.4, 0.4, 20, 6), graphite);
+      mast.position.y = 80;
+      add(mast);
+      const light = new Mesh(new SphereGeometry(1.4, 8, 8), amber);
+      light.position.y = 90;
+      add(light);
+      break;
+    }
+    case 'grandstand': {
+      const base = new Mesh(new BoxGeometry(150, 6, 50), graphite);
+      base.position.set(0, 3, -18);
+      add(base);
+      for (let i = 0; i < 4; i += 1) {
+        const tier = new Mesh(new BoxGeometry(140, 5, 12), i % 2 === 0 ? graphite : warm);
+        tier.position.set(0, 8.5 + i * 5, -i * 10);
+        add(tier);
+      }
+      const roof = new Mesh(new BoxGeometry(150, 1.5, 50), graphite);
+      roof.position.set(0, 30, -18);
+      add(roof);
+      const stripe = new Mesh(new BoxGeometry(150, 1.2, 1.5), amber);
+      stripe.position.set(0, 29, 6);
+      add(stripe);
+      break;
+    }
+    case 'pylon': {
+      const body = new Mesh(new CylinderGeometry(1.5, 4, 120 * scale, 8), graphite);
+      body.position.y = 60 * scale;
+      add(body);
+      const ring = new Mesh(new TorusGeometry(6, 0.8, 8, 20), amber);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 110 * scale;
+      add(ring);
+      break;
+    }
+    case 'antenna': {
+      const mast = new Mesh(new CylinderGeometry(1.2, 3, 140 * scale, 6), graphite);
+      mast.position.y = 70 * scale;
+      add(mast);
+      for (let i = 0; i < 3; i += 1) {
+        const dish = new Mesh(new BoxGeometry(14, 10, 1.5), warm);
+        dish.position.set(0, 40 + i * 30, 4);
+        dish.rotation.y = i * 1.2;
+        add(dish);
+      }
+      const tip = new Mesh(new SphereGeometry(1.6, 8, 8), cyan);
+      tip.position.y = 142 * scale;
+      add(tip);
+      break;
+    }
+    case 'spire': {
+      const s = 1 * scale;
+      const main = new Mesh(new ConeGeometry(55 * s, 260 * s, 7), rock);
+      main.position.y = 110 * s;
+      add(main);
+      const second = new Mesh(new ConeGeometry(38 * s, 170 * s, 6), rock);
+      second.position.set(48 * s, 60 * s, 20 * s);
+      add(second);
+      break;
+    }
+    case 'arch': {
+      const arch = new Mesh(new TorusGeometry(70 * scale, 16 * scale, 8, 24, Math.PI), rock);
+      arch.position.y = 10;
+      add(arch);
+      break;
+    }
+  }
+  return group;
+};

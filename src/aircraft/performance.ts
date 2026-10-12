@@ -89,7 +89,10 @@ export const computeFlightParameters = (resolved: ResolvedBuild): FlightParamete
 };
 
 /** Alignment rate (rad/s) of velocity toward the nose at a given airspeed. */
-export const gripAtSpeed = (params: Pick<FlightParameters, 'grip' | 'gripExponent'>, speed: number): number => {
+export const gripAtSpeed = (
+  params: Pick<FlightParameters, 'grip' | 'gripExponent'>,
+  speed: number,
+): number => {
   const ratio = REFERENCE_SPEED / Math.max(speed, 15);
   return params.grip * clamp(ratio ** params.gripExponent, 0.35, 2.2);
 };

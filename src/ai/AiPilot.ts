@@ -134,7 +134,10 @@ export const computeAiInput = (
   // When very close to the gate, start looking at the next one so the exit is smooth.
   if (distance < 70 && nextGateIndex + 1 < gates.length) {
     _toAfter.subVectors(after.position, state.position).normalize();
-    _toTarget.normalize().lerp(_toAfter, clamp01((70 - distance) / 70) * 0.6).normalize();
+    _toTarget
+      .normalize()
+      .lerp(_toAfter, clamp01((70 - distance) / 70) * 0.6)
+      .normalize();
   } else {
     _toTarget.normalize();
   }
@@ -166,7 +169,8 @@ export const computeAiInput = (
   }
 
   const gain = personality.gain;
-  const desiredBank = clamp(yawError * 2.2 * gain, -personality.maxBank, personality.maxBank) * (1 - terrainPanic);
+  const desiredBank =
+    clamp(yawError * 2.2 * gain, -personality.maxBank, personality.maxBank) * (1 - terrainPanic);
   const roll = clamp((desiredBank - state.bank) * 1.6 * gain, -1, 1);
 
   // Pull into the turn while banked, plus a vertical correction.
@@ -186,7 +190,8 @@ export const computeAiInput = (
   _toAfter.subVectors(after.position, gate.position).normalize();
   const turnAngle = nextGateIndex + 1 < gates.length ? Math.acos(clamp(_toNext.dot(_toAfter), -1, 1)) : 0;
   const cornerSpeed =
-    params.maxSpeed * clamp(1 - (turnAngle / Math.PI) * 1.4 * caution, personality.cornerSpeedFloor * skill, 1);
+    params.maxSpeed *
+    clamp(1 - (turnAngle / Math.PI) * 1.4 * caution, personality.cornerSpeedFloor * skill, 1);
   const brakingDistance = speed * 2.4 * caution;
   const inBrakingZone = distance < brakingDistance && turnAngle > 0.3;
   const misaligned = Math.abs(yawError) > 0.8;
@@ -230,11 +235,7 @@ export const computeAiInput = (
  * Post-finish cruise: fly straight ahead at a safe height over the terrain so
  * finished racers never plough into the scenery while the results come up.
  */
-export const computeCruiseInput = (
-  state: FlightState,
-  circuit: Circuit,
-  out: FlightInput,
-): FlightInput => {
+export const computeCruiseInput = (state: FlightState, circuit: Circuit, out: FlightInput): FlightInput => {
   _cruiseForward.set(0, 0, 1).applyQuaternion(state.orientation);
   const horizontal = Math.hypot(_cruiseForward.x, _cruiseForward.z) || 1;
   const dirX = _cruiseForward.x / horizontal;
@@ -242,7 +243,10 @@ export const computeCruiseInput = (
   const speed = Math.max(state.speed, 20);
   let highest = circuit.terrain.heightAt(state.position.x, state.position.z);
   for (let seconds = 1; seconds <= 4; seconds += 1) {
-    const h = circuit.terrain.heightAt(state.position.x + dirX * speed * seconds, state.position.z + dirZ * speed * seconds);
+    const h = circuit.terrain.heightAt(
+      state.position.x + dirX * speed * seconds,
+      state.position.z + dirZ * speed * seconds,
+    );
     if (h > highest) highest = h;
   }
   const targetAltitude = highest + 120;

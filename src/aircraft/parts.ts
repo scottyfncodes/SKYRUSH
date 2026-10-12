@@ -257,10 +257,38 @@ export interface Livery {
 }
 
 export const LIVERIES: readonly Livery[] = [
-  { id: 'livery-ember', name: 'Graphite Ember', base: 0x2a2f36, accent: 0xff9f1c, secondary: 0xf2ede4, canopy: 0x183a4a },
-  { id: 'livery-glacier', name: 'Glacier Cyan', base: 0xe8e4dc, accent: 0x29c7e6, secondary: 0x1a2232, canopy: 0x11283a },
-  { id: 'livery-midnight', name: 'Midnight Orange', base: 0x151c2c, accent: 0xff6a1f, secondary: 0xc9d2de, canopy: 0x0f2334 },
-  { id: 'livery-signal', name: 'Signal White', base: 0xf4f1ea, accent: 0xe8332a, secondary: 0x22262e, canopy: 0x1a2f3e },
+  {
+    id: 'livery-ember',
+    name: 'Graphite Ember',
+    base: 0x2a2f36,
+    accent: 0xff9f1c,
+    secondary: 0xf2ede4,
+    canopy: 0x183a4a,
+  },
+  {
+    id: 'livery-glacier',
+    name: 'Glacier Cyan',
+    base: 0xe8e4dc,
+    accent: 0x29c7e6,
+    secondary: 0x1a2232,
+    canopy: 0x11283a,
+  },
+  {
+    id: 'livery-midnight',
+    name: 'Midnight Orange',
+    base: 0x151c2c,
+    accent: 0xff6a1f,
+    secondary: 0xc9d2de,
+    canopy: 0x0f2334,
+  },
+  {
+    id: 'livery-signal',
+    name: 'Signal White',
+    base: 0xf4f1ea,
+    accent: 0xe8332a,
+    secondary: 0x22262e,
+    canopy: 0x1a2f3e,
+  },
 ];
 
 export const ALL_PARTS: readonly AircraftPart[] = [...FUSELAGES, ...ENGINES, ...WINGS];
