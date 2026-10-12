@@ -56,6 +56,8 @@ export interface Racer {
   position: number;
   respawnTimer: number;
   wrongWayTimer: number;
+  /** Seconds spent stuck low on the terrain (scraping or too slow to fly); a crash once it runs out. */
+  groundedTimer: number;
   lastGateTime: number;
   splitTimes: number[];
 }
@@ -105,6 +107,10 @@ const AI_ASSIST: FlightAssist = { strength: 0.6 };
 const RESPAWN_DELAY = 1.6;
 const RESPAWN_SPEED = 62;
 const WRONG_WAY_SECONDS = 3.5;
+/** Below this height an aircraft that is scraping, or too slow to fly, counts as grounded. */
+const GROUNDED_ALTITUDE = 5;
+/** Grounded for this long means the aircraft is stuck on the terrain and is treated as a crash. */
+const GROUNDED_SECONDS = 1.2;
 /** Boost energy refunded to the player for skilful moves (fraction of a full tank). */
 export const BOOST_REWARD = { perfectGate: 0.12, ring: 0.25, nearMiss: 0.08 } as const;
 const _tmp = new Vector3();
@@ -175,6 +181,7 @@ export class RaceSimulation {
         position: index + 1,
         respawnTimer: 0,
         wrongWayTimer: 0,
+        groundedTimer: 0,
         lastGateTime: 0,
         splitTimes: [],
       };
@@ -328,7 +335,16 @@ export class RaceSimulation {
       this.events.push({ type: 'overheat', racerId: config.id, isPlayer });
     }
 
-    if (flight.groundContact === 'crash') {
+    // A gentle scrape bleeds speed; repeated scrapes or a stall on the ground would leave the
+    // aircraft sliding along the terrain forever, so being grounded too long counts as a crash.
+    const grounded =
+      flight.altitude < GROUNDED_ALTITUDE &&
+      (flight.groundContact === 'scrape' || flight.speed < racer.params.stallSpeed);
+    racer.groundedTimer = grounded ? racer.groundedTimer + dt : 0;
+    const stuck = racer.groundedTimer >= GROUNDED_SECONDS;
+
+    if (flight.groundContact === 'crash' || stuck) {
+      racer.groundedTimer = 0;
       const penalty = Math.round(3 + 3 / racer.params.durability);
       racer.crashes += 1;
       racer.penaltySeconds += penalty;
@@ -445,6 +461,7 @@ export class RaceSimulation {
     racer.flight.boostEnergy = Math.max(racer.flight.boostEnergy, 0.4);
     racer.previousPosition.copy(position);
     racer.wrongWayTimer = 0;
+    racer.groundedTimer = 0;
     if (racer.config.isPlayer) this.style.resetProximity();
   }
 
@@ -519,6 +536,7 @@ export class RaceSimulation {
       target.rawTime = source.rawTime;
       target.finishTime = source.finishTime;
       target.respawnTimer = source.respawnTimer;
+      target.groundedTimer = source.groundedTimer;
       target.position = source.position;
       target.splitTimes = [...source.splitTimes];
     });
