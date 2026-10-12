@@ -52,7 +52,7 @@ export const createSettingsPanel = (
       },
     },
   });
-  const toggle = (label: string, key: 'invertPitch' | 'audio', testId: string) => {
+  const toggle = (label: string, key: 'invertPitch' | 'audio' | 'haptics', testId: string) => {
     const input = h('input', {
       attrs: { type: 'checkbox', 'aria-label': label },
       dataset: { testid: testId },
@@ -89,5 +89,6 @@ export const createSettingsPanel = (
     ),
     toggle('Invert pitch (push forward to dive)', 'invertPitch', 'setting-invert'),
     toggle('Sound', 'audio', 'setting-audio'),
+    toggle('Vibration on big moments (where supported)', 'haptics', 'setting-haptics'),
   );
 };

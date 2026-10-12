@@ -67,6 +67,7 @@ export interface RaceState {
   x: number;
   y: number;
   z: number;
+  style: { score: number; rings: number; multiplier: number; chain: number };
 }
 
 export const getState = async (page: Page) =>

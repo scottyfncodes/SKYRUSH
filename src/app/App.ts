@@ -26,6 +26,8 @@ import type { PartCategory } from '../aircraft/parts';
 import { difficultyMultiplier } from '../ai/AiPilot';
 import type { Standing } from '../race/RaceSimulation';
 import { h } from '../ui/dom';
+import type { StyleTracker } from '../style/StyleTracker';
+import type { RunStyleStats } from '../progression/badges';
 
 export type AppScreen =
   | 'loading'
@@ -57,11 +59,14 @@ export interface TestHarness {
       x: number;
       y: number;
       z: number;
+      style: ReturnType<StyleTracker['snapshot']>;
     };
   };
   setAutopilot: (enabled: boolean) => void;
   setTimeScale: (scale: number) => void;
   simulateToFinish: () => void;
+  /** Puts the player on a straight approach to a bonus ring (`distance` m out). */
+  approachRing: (index: number, distance?: number) => void;
 }
 
 declare global {
@@ -122,7 +127,7 @@ export class App {
     };
 
     this.menu = new MainMenuScreen({
-      onRace: () => this.goBriefing(),
+      onRace: () => this.quickRace(),
       onGarage: () => this.goGarage(),
       onControls: () => this.goSettings(),
     });
@@ -184,6 +189,10 @@ export class App {
         this.restartRace();
       } else if (action === 'recenter' && this.screen === 'race') {
         this.raceStage?.recenterCamera();
+      } else if (action === 'mute' && (this.screen === 'race' || this.screen === 'paused')) {
+        const audio = !this.profile.settings.audio;
+        this.changeSettings({ audio });
+        this.hud.showMessage(audio ? 'Sound on' : 'Sound off', 'neutral', 1.2);
       }
     });
 
@@ -198,6 +207,9 @@ export class App {
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.screen === 'race') this.pauseRace();
+      // iOS suspends the AudioContext in the background; try to resume on return
+      // (it may still need the next tap, which the pointerdown unlock handles).
+      if (!document.hidden) this.audio.unlock();
     });
     this.portraitQuery =
       typeof window.matchMedia === 'function' ? window.matchMedia('(orientation: portrait)') : null;
@@ -307,6 +319,12 @@ export class App {
     this.setScreen('garage');
     this.garage.update(this.profile);
     this.garage.show();
+  }
+
+  /** Returning players go straight to the grid; the briefing is for the first race. */
+  quickRace(): void {
+    if (this.profile.racesCompleted > 0) this.startRace();
+    else this.goBriefing();
   }
 
   goBriefing(): void {
@@ -429,7 +447,17 @@ export class App {
 
   private finishRace(standings: Standing[]): void {
     const player = standings.find((s) => s.isPlayer);
-    if (!player) return;
+    if (!player || !this.raceStage) return;
+    const tracker = this.raceStage.sim.style;
+    const style: RunStyleStats = {
+      score: tracker.score,
+      bestMultiplier: tracker.bestMultiplier,
+      perfectGates: tracker.perfectGates,
+      nearMisses: tracker.nearMisses,
+      rings: tracker.rings,
+      ringTotal: this.circuit.rings.length,
+      overtakes: tracker.overtakes,
+    };
     const applied = applyRaceOutcome(this.profile, {
       circuitId: this.circuit.id,
       position: player.position,
@@ -441,12 +469,21 @@ export class App {
       penaltySeconds: player.penaltySeconds,
       parTime: this.circuit.parTime,
       build: this.profile.build,
+      style,
     });
     this.profile = applied.profile;
     this.persist();
     this.setScreen('results');
-    this.results.update({ standings, player, applied, credits: this.profile.credits });
+    this.results.update({
+      standings,
+      player,
+      applied,
+      credits: this.profile.credits,
+      style,
+      gateCount: this.circuit.gates.length,
+    });
     this.results.show();
+    if (applied.newBestTime || applied.badges.length > 0) this.audio.personalBest();
     this.audio.updateEngine(0.2, 0.2, false, false);
   }
 
@@ -487,6 +524,7 @@ export class App {
                   x: player.flight.position.x,
                   y: player.flight.position.y,
                   z: player.flight.position.z,
+                  style: stage.sim.style.snapshot(),
                 }
               : null,
         };
@@ -496,6 +534,9 @@ export class App {
       },
       setTimeScale: (scale) => {
         if (this.raceStage) this.raceStage.timeScale = Math.max(0.1, Math.min(20, scale));
+      },
+      approachRing: (index, distance = 120) => {
+        if (this.raceStage && this.screen === 'race') this.raceStage.approachRing(index, distance);
       },
       simulateToFinish: () => {
         if (this.raceStage && this.screen === 'race') {

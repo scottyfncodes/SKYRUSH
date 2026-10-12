@@ -46,6 +46,8 @@ export interface AircraftModelHandles {
   /** Materials with emissive accents (for overheat tinting). */
   accentMaterials: MeshStandardMaterial[];
   engineMaterials: MeshStandardMaterial[];
+  /** Wingtip positions in the aircraft's local frame (contrail emitters). */
+  wingtips: Vector3[];
   dispose: () => void;
 }
 
@@ -372,6 +374,7 @@ export const buildAircraftModel = (build: ResolvedBuild): AircraftModelHandles =
   const { shape, span, aileronSpan } = wingShape(wings.visual);
   const wingGeometry = extrudeFlat(shape, 0.12);
   const ailerons: { left: Object3D; right: Object3D } = { left: new Object3D(), right: new Object3D() };
+  const wingtips: Vector3[] = [];
   for (const side of [-1, 1]) {
     const wing = new Mesh(wingGeometry, bodyMaterial);
     wing.castShadow = true;
@@ -384,6 +387,9 @@ export const buildAircraftModel = (build: ResolvedBuild): AircraftModelHandles =
     const tip = new Mesh(new BoxGeometry(0.12, 0.2, 0.9), accentMaterial);
     tip.position.set(span - 0.05, 0.06, -0.9);
     wing.add(tip);
+    wingtips.push(
+      new Vector3(side * (layout.wingRoot.x + span), layout.wingRoot.y + 0.06, layout.wingRoot.z - 1.1),
+    );
 
     // Aileron on the outer trailing edge.
     const pivot = new Object3D();
@@ -534,6 +540,7 @@ export const buildAircraftModel = (build: ResolvedBuild): AircraftModelHandles =
     airbrakes,
     accentMaterials,
     engineMaterials,
+    wingtips,
     dispose: () => {
       disposeObject(root);
       exhaustMaterial.dispose();

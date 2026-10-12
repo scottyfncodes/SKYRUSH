@@ -3,8 +3,10 @@ import {
   AmbientLight,
   BackSide,
   BoxGeometry,
+  AdditiveBlending,
   BufferAttribute,
   CanvasTexture,
+  CircleGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -27,7 +29,7 @@ import {
   Vector3,
 } from 'three';
 import type { Circuit, Landmark } from '../course/circuit';
-import type { GateDefinition } from '../course/gates';
+import type { BonusRing, GateDefinition } from '../course/gates';
 import { PALETTE } from './materials';
 import { hash2 } from '../core/rng';
 import { clamp01, smoothstep } from '../core/math';
@@ -71,14 +73,37 @@ export interface GateVisual {
   flash: number;
 }
 
+export interface RingVisual {
+  ring: BonusRing;
+  group: Group;
+  hoop: Mesh;
+  material: MeshBasicMaterial;
+  glowMaterial: MeshBasicMaterial;
+  beamMaterial: MeshBasicMaterial;
+  /** Seconds left of the collect burst; -1 once fully hidden. */
+  burst: number;
+  collected: boolean;
+}
+
 export interface WorldHandles {
   scene: Scene;
   sun: DirectionalLight;
   gates: GateVisual[];
+  rings: RingVisual[];
   update: (dt: number, focus: Vector3) => void;
   setGateStates: (nextGate: number, missed: Set<number>) => void;
+  /** Brief white flash on a gate's light strips (perfect pass feedback). */
+  flashGate: (index: number) => void;
+  collectRing: (index: number) => void;
+  resetRings: () => void;
   dispose: () => void;
 }
+
+const RING_COLOR = 0xffc83d;
+const GATE_FLASH_SECONDS = 0.45;
+const RING_BURST_SECONDS = 0.45;
+const _flashColor = new Color();
+const _white = new Color(0xffffff);
 
 const terrainColor = (height: number, slope: number, x: number, z: number, target: Color): Color => {
   const sand = new Color(PALETTE.sand);
@@ -238,6 +263,9 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
     createGateVisual(gate, circuit, scene, disposables),
   );
 
+  // --- Bonus rings ---------------------------------------------------------------------------
+  const rings: RingVisual[] = circuit.rings.map((ring) => createRingVisual(ring, scene, disposables));
+
   // --- Landmarks and facility -----------------------------------------------------------------
   const landmarks = new Group();
   for (const landmark of circuit.landmarks) {
@@ -268,6 +296,31 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
     }
   };
 
+  const flashGate = (index: number): void => {
+    const visual = gates[index];
+    if (visual) visual.flash = GATE_FLASH_SECONDS;
+  };
+
+  const collectRing = (index: number): void => {
+    const visual = rings[index];
+    if (!visual || visual.collected) return;
+    visual.collected = true;
+    visual.burst = RING_BURST_SECONDS;
+    visual.beamMaterial.opacity = 0;
+  };
+
+  const resetRings = (): void => {
+    for (const visual of rings) {
+      visual.collected = false;
+      visual.burst = 0;
+      visual.group.visible = true;
+      visual.group.scale.setScalar(1);
+      visual.material.opacity = 1;
+      visual.glowMaterial.opacity = 0.14;
+      visual.beamMaterial.opacity = 0.32;
+    }
+  };
+
   let time = 0;
   const update = (dt: number, focus: Vector3): void => {
     time += dt;
@@ -282,6 +335,24 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
       }
       if (visual.flash > 0) {
         visual.flash = Math.max(0, visual.flash - dt);
+        const base = GATE_COLORS[visual.state].strip;
+        _flashColor.setHex(base).lerp(_white, visual.flash / GATE_FLASH_SECONDS);
+        visual.stripMaterial.color.copy(_flashColor);
+        if (visual.flash === 0) applyGateState(visual);
+      }
+    }
+    for (const visual of rings) {
+      if (!visual.collected) {
+        // Gentle spin and shimmer so the rings read as pickups, not scenery.
+        visual.hoop.rotation.z = time * 0.9 + visual.ring.index;
+        visual.glowMaterial.opacity = 0.1 + 0.06 * Math.sin(time * 3 + visual.ring.index);
+      } else if (visual.burst > 0) {
+        visual.burst = Math.max(0, visual.burst - dt);
+        const t = 1 - visual.burst / RING_BURST_SECONDS;
+        visual.group.scale.setScalar(1 + t * 0.9);
+        visual.material.opacity = 1 - t;
+        visual.glowMaterial.opacity = 0.35 * (1 - t);
+        if (visual.burst === 0) visual.group.visible = false;
       }
     }
   };
@@ -290,8 +361,12 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
     scene,
     sun,
     gates,
+    rings,
     update,
     setGateStates,
+    flashGate,
+    collectRing,
+    resetRings,
     dispose: () => {
       disposables.forEach((d) => d.dispose());
       scene.clear();
@@ -443,6 +518,63 @@ const createGateVisual = (
   };
   applyGateState(visual);
   return visual;
+};
+
+const createRingVisual = (
+  ring: BonusRing,
+  scene: Scene,
+  disposables: { dispose: () => void }[],
+): RingVisual => {
+  const group = new Group();
+  group.position.copy(ring.position);
+  group.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), ring.normal);
+
+  const material = new MeshBasicMaterial({ color: RING_COLOR, transparent: true, opacity: 1 });
+  const glowMaterial = new MeshBasicMaterial({
+    color: RING_COLOR,
+    transparent: true,
+    opacity: 0.14,
+    side: DoubleSide,
+    depthWrite: false,
+  });
+  // A thin vertical light beam makes a low ring visible from the racing line above.
+  const beamMaterial = new MeshBasicMaterial({
+    color: RING_COLOR,
+    transparent: true,
+    opacity: 0.32,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  disposables.push(material, glowMaterial, beamMaterial);
+
+  const radius = ring.radius - 0.9;
+  const hoopGeometry = new TorusGeometry(radius, 0.75, 10, 40);
+  // Notches on the hoop make the spin visible.
+  const notchGeometry = new BoxGeometry(1.6, 2.2, 1.6);
+  const glowGeometry = new CircleGeometry(radius, 32);
+  const beamHeight = 110;
+  const beamGeometry = new CylinderGeometry(0.55, 0.55, beamHeight, 6, 1, true);
+  disposables.push(hoopGeometry, notchGeometry, glowGeometry, beamGeometry);
+
+  const hoop = new Mesh(hoopGeometry, material);
+  for (let i = 0; i < 4; i += 1) {
+    const notch = new Mesh(notchGeometry, material);
+    const angle = (i / 4) * Math.PI * 2;
+    notch.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+    notch.rotation.z = angle;
+    hoop.add(notch);
+  }
+  const glow = new Mesh(glowGeometry, glowMaterial);
+  group.add(hoop, glow);
+
+  // Ring normals are horizontal, so the group only yaws and a child cylinder stays vertical.
+  const beam = new Mesh(beamGeometry, beamMaterial);
+  beam.position.set(0, radius + beamHeight / 2, 0);
+  group.add(beam);
+
+  scene.add(group);
+  return { ring, group, hoop, material, glowMaterial, beamMaterial, burst: 0, collected: false };
 };
 
 const createStartLine = (circuit: Circuit, disposables: { dispose: () => void }[]): Object3D => {
