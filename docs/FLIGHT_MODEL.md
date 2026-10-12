@@ -7,9 +7,10 @@ stall cannot destabilise it).
 
 ## Conventions
 
-- Body frame: `+X` right, `+Y` up, `+Z` forward. World up is `+Y`.
-- Inputs: pitch (+ nose up), roll (+ right wing down), yaw (+ nose right), throttle 0..1, boost and
-  airbrake booleans. Inputs are clamped and NaN-safe.
+- Body frame: `+Z` forward, `+Y` up, and `+X` is the pilot's _left_ (a Three.js camera looking
+  along `+Z` sees `+X` on the viewer's left). "Right" in the model always means screen-right.
+- Inputs: pitch (+ nose up), roll (+ bank screen-right), yaw (+ nose screen-right), throttle 0..1,
+  boost and airbrake booleans. Inputs are clamped and NaN-safe.
 - Units are SI: metres, seconds, kilograms, newtons.
 
 ## Rotation

@@ -144,9 +144,9 @@ export const computeAiInput = (
 
   _forward.set(0, 0, 1).applyQuaternion(state.orientation);
 
-  // Horizontal heading error (positive = target is to the right).
-  const headingNow = Math.atan2(_forward.x, _forward.z);
-  const headingTarget = Math.atan2(_toTarget.x, _toTarget.z);
+  // Horizontal heading error (positive = target is to the pilot's right, i.e. the -X side).
+  const headingNow = Math.atan2(-_forward.x, _forward.z);
+  const headingTarget = Math.atan2(-_toTarget.x, _toTarget.z);
   const yawError = wrapAngle(headingTarget - headingNow);
 
   // Vertical: desired climb angle toward the target plus a terrain margin.

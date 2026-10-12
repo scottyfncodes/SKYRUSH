@@ -76,24 +76,25 @@ describe('computeAiInput', () => {
     const params = flightParametersForBuild(personality.build);
     const gate = circuit.gates[0]!;
     const out: FlightInput = { ...NEUTRAL_INPUT };
-    // Start left of the gate, facing +Z: the gate is to the right so the pilot banks right.
-    const left = createFlightState(
+    // Start on the -X side of the gate, facing +Z. +X is the pilot's left, so the gate is
+    // to the LEFT and the pilot banks left (negative roll).
+    const onMinusX = createFlightState(
       gate.position.clone().add(new Vector3(-300, 0, -600)),
       new Quaternion(),
       70,
     );
-    computeAiInput(left, params, circuit, 0, personality, out);
-    expect(out.roll).toBeGreaterThan(0);
-    expect(out.yaw).toBeGreaterThan(0);
-    // Mirror.
-    const right = createFlightState(
+    computeAiInput(onMinusX, params, circuit, 0, personality, out);
+    expect(out.roll).toBeLessThan(0);
+    expect(out.yaw).toBeLessThan(0);
+    // Mirror: gate on the pilot's right.
+    const onPlusX = createFlightState(
       gate.position.clone().add(new Vector3(300, 0, -600)),
       new Quaternion(),
       70,
     );
-    computeAiInput(right, params, circuit, 0, personality, out);
-    expect(out.roll).toBeLessThan(0);
-    expect(out.yaw).toBeLessThan(0);
+    computeAiInput(onPlusX, params, circuit, 0, personality, out);
+    expect(out.roll).toBeGreaterThan(0);
+    expect(out.yaw).toBeGreaterThan(0);
     // Below the gate: pitch up.
     const low = createFlightState(gate.position.clone().add(new Vector3(0, -40, -600)), new Quaternion(), 70);
     computeAiInput(low, params, circuit, 0, personality, out);

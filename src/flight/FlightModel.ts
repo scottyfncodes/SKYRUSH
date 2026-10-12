@@ -11,7 +11,9 @@ import {
 /**
  * SKYRUSH simcade flight model.
  *
- * Conventions (body frame): +X right, +Y up, +Z forward.
+ * Conventions (body frame): +Z forward, +Y up, +X is the pilot's LEFT.
+ * (A Three.js camera looking along +Z sees +X on the viewer's left, so
+ * "right" everywhere in this file means screen-right, i.e. the -X side.)
  * The model is deliberately simple and documented in docs/FLIGHT_MODEL.md:
  *  - control inputs command body rotation rates that respond with a first-order lag;
  *  - velocity is continuously re-aligned toward the nose at a speed-dependent
@@ -45,7 +47,7 @@ export interface FlightState {
   position: Vector3;
   velocity: Vector3;
   orientation: Quaternion;
-  /** Body rates in rad/s: x = pitch up, y = yaw right, z = roll right. */
+  /** Body rates in rad/s: x = pitch up, y = yaw screen-right, z = roll screen-right. */
   rates: Vector3;
   throttle: number;
   boostEnergy: number; // 0..1
@@ -58,7 +60,7 @@ export interface FlightState {
   angleOfAttack: number; // radians between velocity and nose
   altitude: number; // metres above terrain
   groundContact: GroundContact;
-  bank: number; // radians, positive = right wing down
+  bank: number; // radians, positive = screen-right wing down
   pitchAngle: number; // radians, positive = nose above horizon
 }
 
@@ -216,7 +218,7 @@ export const stepFlight = (
   getRight(state, _right);
   const speed = state.velocity.length();
   state.speed = speed;
-  state.bank = Math.atan2(-_right.y, _up.y);
+  state.bank = Math.atan2(_right.y, _up.y); // positive = screen-right wing down (+X wing up)
   state.pitchAngle = Math.asin(clamp(_forward.y, -1, 1));
 
   const stallSpeed = params.stallSpeed;
@@ -281,13 +283,13 @@ export const stepFlight = (
   // Apply body rotations (see conventions at the top of the file).
   _dq.setFromAxisAngle(_axis.set(1, 0, 0), -state.rates.x * dt);
   state.orientation.multiply(_dq);
-  _dq.setFromAxisAngle(_axis.set(0, 1, 0), state.rates.y * dt);
+  _dq.setFromAxisAngle(_axis.set(0, 1, 0), -state.rates.y * dt); // nose toward -X = screen-right
   state.orientation.multiply(_dq);
-  _dq.setFromAxisAngle(_axis.set(0, 0, 1), -state.rates.z * dt);
+  _dq.setFromAxisAngle(_axis.set(0, 0, 1), state.rates.z * dt); // +X wing up = screen-right roll
   state.orientation.multiply(_dq);
   if (headingRate !== 0) {
     // Heading change about the world up axis keeps bank and pitch intact.
-    _worldYaw.setFromAxisAngle(_axis.set(0, 1, 0), headingRate * dt);
+    _worldYaw.setFromAxisAngle(_axis.set(0, 1, 0), -headingRate * dt); // right bank turns toward -X
     state.orientation.premultiply(_worldYaw);
   }
   state.orientation.normalize();
