@@ -24,9 +24,20 @@ Authority scales with airspeed:
 - far above top speed the controls stiffen slightly;
 - a large angle between nose and velocity (sloppy handling) halves pitch and roll authority.
 
-Assistance (player adjustable, 0–100%) adds self-levelling in roll and pitch when the stick is
-centred, a coordinated-turn yaw when banked, and a little automatic pitch while banked so a rolled
-aircraft turns without hauling on the stick.
+### Assisted steering (assistance above 0%)
+
+Roll input commands a _bank angle_ (`input × 1.25 rad`, about 72°) rather than a roll rate, so
+holding the stick never rolls the aircraft inverted; releasing it levels the wings. A banked aircraft
+turns about the world up axis at `sin(bank) × 1.15 rad/s`, scaled down at high speed, which keeps
+bank and pitch intact while the heading changes. The vertical lift lost to bank is restored in
+proportion to the assistance strength, so turns are altitude-neutral, and a small nose-up term is
+added while banked. Pitch is soft-limited to ±57° so the aircraft cannot loop; the nose always has
+authority back toward level. With the stick centred, pitch settles toward level.
+
+### Direct control (assistance at 0%)
+
+Roll input commands a roll rate, a mild coordinated yaw follows bank, and the aircraft self-levels
+only when the stick is centred. Pitch is unlimited. AI pilots always fly with 60% assistance.
 
 ## Translation
 

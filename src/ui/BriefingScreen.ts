@@ -108,7 +108,7 @@ const fact = (label: string, value: string): HTMLElement =>
 export const createControlsPanel = (isTouch: boolean): HTMLElement => {
   const rows: [string, string][] = isTouch
     ? [
-        ['Left stick', 'Pitch and roll (push up to climb)'],
+        ['Left stick', 'Left / right banks and turns; up / down pitches (push up to climb)'],
         ['Throttle slider', 'Drag up or down for engine power'],
         ['BOOST', 'Hold for a burst of thrust (watch the heat)'],
         ['BRAKE', 'Hold to deploy the airbrake before tight turns'],
@@ -117,7 +117,7 @@ export const createControlsPanel = (isTouch: boolean): HTMLElement => {
     : [
         ['W / ↑', 'Nose up (climb)'],
         ['S / ↓', 'Nose down (dive)'],
-        ['A / D or ← / →', 'Roll left / right'],
+        ['A / D or ← / →', 'Bank and turn left / right'],
         ['Q / E', 'Yaw left / right'],
         ['Shift', 'Boost (hold)'],
         ['Space', 'Airbrake (hold)'],

@@ -90,6 +90,8 @@ export interface Standing {
   gatesPassed: number;
 }
 
+/** AI pilots always fly with the default assistance, independent of the player's setting. */
+const AI_ASSIST: FlightAssist = { strength: 0.6 };
 const RESPAWN_DELAY = 1.6;
 const RESPAWN_SPEED = 62;
 const WRONG_WAY_SECONDS = 3.5;
@@ -244,7 +246,7 @@ export class RaceSimulation {
 
     racer.previousPosition.copy(flight.position);
     const wasOverheated = flight.overheated;
-    stepFlight(flight, racer.input, racer.params, this.environment, dt, this.assist);
+    stepFlight(flight, racer.input, racer.params, this.environment, dt, isPlayer ? this.assist : AI_ASSIST);
 
     if (!wasOverheated && flight.overheated) {
       this.events.push({ type: 'overheat', racerId: config.id, isPlayer });

@@ -35,8 +35,13 @@ landscape, needs no account or backend, and deploys as a static site to GitHub P
 | `R`                 | Restart race          |
 | `Esc` / `P`         | Pause / resume        |
 
-**iPhone (landscape)**: left virtual stick for pitch and roll, throttle slider, BOOST and BRAKE hold
-buttons, and a pause button. Pitch direction can be inverted in settings on both devices.
+**iPhone (landscape)**: left virtual stick (left/right banks and turns, up/down pitches), throttle
+slider, BOOST and BRAKE hold buttons, and a pause button. Pitch direction can be inverted in settings
+on both devices.
+
+With assistance above 0% (the default is 60%), left and right command a bank angle capped at about
+72° and the banked aircraft turns by itself, so it can never be rolled inverted; the nose is kept
+within about 57° so it cannot loop. Set assistance to 0% for raw rate control on every axis.
 
 ### Progression
 
