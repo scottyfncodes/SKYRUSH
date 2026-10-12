@@ -51,6 +51,18 @@ test.describe('responsive layout', () => {
     }
   });
 
+  test('garage panels do not overlap on a narrow landscape phone', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'phone layout only');
+    await page.setViewportSize({ width: 812, height: 375 });
+    await openGame(page);
+    await page.getByTestId('menu-garage').click();
+    await expect(page.getByTestId('garage')).toBeVisible();
+    const detail = page.locator('.garage-detail');
+    await expectNoOverlap(detail, page.locator('.garage-right'), 'detail and performance panel');
+    await expectNoOverlap(detail, page.locator('.garage-left'), 'detail and part list');
+    await expectInsideViewport(page, page.getByTestId('garage-race'), 'race button');
+  });
+
   test('race HUD and controls are visible and well separated', async ({ page, isMobile }) => {
     await openGame(page);
     await startRaceFromMenu(page);

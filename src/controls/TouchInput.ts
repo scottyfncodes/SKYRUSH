@@ -132,7 +132,27 @@ export class TouchInput {
       this.airbrake = down;
     });
 
-    this.listen(this.pauseButton, 'click', () => this.actionListeners.forEach((l) => l('pause')));
+    // touchstart is prevented on the control layer (no page scrolling), which also
+    // suppresses iOS's synthesised click, so the pause button listens to pointer events.
+    let pausePointer: number | null = null;
+    this.listen(this.pauseButton, 'pointerdown', (event) => {
+      const e = event as PointerEvent;
+      e.preventDefault();
+      pausePointer = e.pointerId;
+      this.pauseButton.classList.add('is-active');
+    });
+    this.listen(this.pauseButton, 'pointerup', (event) => {
+      const e = event as PointerEvent;
+      this.pauseButton.classList.remove('is-active');
+      if (pausePointer !== e.pointerId) return;
+      pausePointer = null;
+      this.lastActivity = performance.now();
+      this.actionListeners.forEach((l) => l('pause'));
+    });
+    this.listen(this.pauseButton, 'pointercancel', () => {
+      pausePointer = null;
+      this.pauseButton.classList.remove('is-active');
+    });
 
     // Any interruption releases everything.
     this.listen(window, 'blur', () => this.clear());

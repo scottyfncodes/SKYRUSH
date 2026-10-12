@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   collectErrors,
+  tap,
   getState,
   holdKeyForSimSeconds,
   openGame,
@@ -154,9 +155,9 @@ test.describe('SKYRUSH core flow', () => {
     await startRaceFromMenu(page);
     await waitForRacing(page);
     await waitForSimSeconds(page, 0.3);
-    // Pause via the touch button on mobile and Escape on desktop; both are published controls.
+    // Pause via a real touch tap on mobile and Escape on desktop; both are published controls.
     const pauseButton = page.getByTestId('touch-pause');
-    if (await pauseButton.isVisible()) await pauseButton.click();
+    if (await pauseButton.isVisible()) await tap(page, pauseButton);
     else await page.keyboard.press('Escape');
     await expect(page.getByTestId('pause')).toBeVisible();
     const paused = await getState(page);
@@ -170,7 +171,7 @@ test.describe('SKYRUSH core flow', () => {
     await waitForSimSeconds(page, 0.3);
     expect((await getState(page)).race!.clock).toBeGreaterThan(paused.race!.clock);
 
-    if (await pauseButton.isVisible()) await pauseButton.click();
+    if (await pauseButton.isVisible()) await tap(page, pauseButton);
     else await page.keyboard.press('Escape');
     await page.getByTestId('pause-restart').click();
     await expect(page.getByTestId('pause')).toBeHidden();
