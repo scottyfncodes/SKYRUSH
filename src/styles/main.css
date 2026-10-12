@@ -66,7 +66,10 @@ body {
 
 body {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -75,6 +78,20 @@ body {
 #app {
   position: absolute;
   inset: 0;
+}
+
+/* iOS Safari: size to the dynamic viewport so nothing hides behind the toolbar. */
+@supports (height: 100dvh) {
+  body,
+  #app {
+    height: 100dvh;
+  }
+  #app {
+    inset: auto;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
 }
 
 #game-canvas {
@@ -599,7 +616,7 @@ p {
   left: 50%;
   bottom: calc(var(--space-4) + var(--safe-bottom));
   transform: translateX(-50%);
-  width: min(520px, calc(100% - 680px));
+  width: min(520px, calc(100% - 680px - var(--safe-left) - var(--safe-right)));
   min-width: 260px;
   display: flex;
   flex-direction: column;
@@ -1466,8 +1483,8 @@ p {
     font-size: 11px;
   }
   .garage-detail {
-    width: calc(100% - 520px);
-    min-width: 220px;
+    width: calc(100% - 536px - var(--safe-left) - var(--safe-right));
+    min-width: 200px;
     padding: var(--space-2) var(--space-3);
     gap: var(--space-2);
     bottom: calc(var(--space-2) + var(--safe-bottom));

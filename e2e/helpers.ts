@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 export interface SeedProfile {
   credits?: number;
@@ -105,4 +105,11 @@ export const holdKeyForSimSeconds = async (page: Page, key: string, seconds: num
   } finally {
     await page.keyboard.up(key);
   }
+};
+
+/** Taps with real touch events (touchstart/touchend), unlike locator.click() which uses the mouse. */
+export const tap = async (page: Page, locator: Locator): Promise<void> => {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Cannot tap an element without a bounding box');
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
 };
