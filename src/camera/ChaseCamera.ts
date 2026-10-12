@@ -10,6 +10,12 @@ const _gateDir = new Vector3();
 const _worldUp = new Vector3(0, 1, 0);
 const _blendUp = new Vector3();
 
+/** Base vertical field of view. Kept close to the original so the zoom comes from distance, not distortion. */
+export const BASE_FOV = 62;
+/** Extra follow distance at top speed and while boosting, so speed still reads. */
+const SPEED_STRETCH = 2.5;
+const BOOST_STRETCH = 1.5;
+
 /**
  * Smooth third-person chase camera.
  * Sits behind and above the aircraft, blends its roll partially with the
@@ -21,10 +27,12 @@ export class ChaseCamera {
   private readonly position = new Vector3();
   private readonly target = new Vector3();
   private readonly upVector = new Vector3(0, 1, 0);
-  private fov = 64;
+  private fov = BASE_FOV;
   private initialised = false;
-  distance = 17;
-  height = 5.2;
+  /** Follow distance behind the aircraft at rest (m). ~30% closer than the original 17 m. */
+  distance = 12.5;
+  /** Camera height above the aircraft (m). */
+  height = 4.0;
   positionDamping = 7;
   targetDamping = 10;
   rollFollow = 0.45;
@@ -50,8 +58,8 @@ export class ChaseCamera {
     _blendUp.copy(_worldUp).lerp(_up, this.rollFollow).normalize();
 
     const speedFactor = clamp(state.speed / 140, 0, 1);
-    const boostStretch = state.boosting ? 2.5 : 0;
-    const distance = this.distance + speedFactor * 4 + boostStretch;
+    const boostStretch = state.boosting ? BOOST_STRETCH : 0;
+    const distance = this.distance + speedFactor * SPEED_STRETCH + boostStretch;
     _desired.copy(state.position).addScaledVector(_forward, -distance).addScaledVector(_blendUp, this.height);
 
     // Look ahead of the nose, nudged toward the next gate.
@@ -79,7 +87,7 @@ export class ChaseCamera {
       this.upVector.lerp(_blendUp, targetT).normalize();
     }
 
-    const targetFov = 64 + speedFactor * 8 + (state.boosting ? 8 : 0);
+    const targetFov = BASE_FOV + speedFactor * 6 + (state.boosting ? 6 : 0);
     this.fov = damp(this.fov, targetFov, 4, dt);
     this.camera.fov = this.fov;
     this.camera.updateProjectionMatrix();
@@ -87,6 +95,11 @@ export class ChaseCamera {
     this.camera.position.copy(this.position);
     this.camera.up.copy(this.upVector);
     this.camera.lookAt(this.target);
+  }
+
+  /** Distance from the camera to the aircraft (m); exposed for tests. */
+  distanceToAircraft(state: FlightState): number {
+    return this.camera.position.distanceTo(state.position);
   }
 
   /** Quaternion helper for garage presentation reuse. */
