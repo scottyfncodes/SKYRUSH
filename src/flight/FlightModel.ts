@@ -1,6 +1,12 @@
 import { Quaternion, Vector3 } from 'three';
 import { clamp, clamp01, smoothstep } from '../core/math';
-import { ABSOLUTE_MAX_SPEED, AIR_DENSITY, GRAVITY, gripAtSpeed, type FlightParameters } from '../aircraft/performance';
+import {
+  ABSOLUTE_MAX_SPEED,
+  AIR_DENSITY,
+  GRAVITY,
+  gripAtSpeed,
+  type FlightParameters,
+} from '../aircraft/performance';
 
 /**
  * SKYRUSH simcade flight model.

@@ -27,7 +27,9 @@ export const CLEAN_RACE_BONUS = 300;
 const TIME_BONUS_PER_SECOND = 15;
 const TIME_BONUS_CAP = 600;
 
-export const computeReward = (outcome: Pick<RaceOutcome, 'position' | 'finishTime' | 'missedGates' | 'crashes' | 'parTime'>): RewardBreakdown => {
+export const computeReward = (
+  outcome: Pick<RaceOutcome, 'position' | 'finishTime' | 'missedGates' | 'crashes' | 'parTime'>,
+): RewardBreakdown => {
   const index = Math.max(0, Math.min(outcome.position - 1, POSITION_REWARDS.length - 1));
   const base = POSITION_REWARDS[index]!;
   const cleanBonus = outcome.missedGates === 0 && outcome.crashes === 0 ? CLEAN_RACE_BONUS : 0;
@@ -47,7 +49,11 @@ export interface AppliedResult {
 }
 
 /** Applies a race outcome to the profile: credits, counters, best time, history, unlocks. */
-export const applyRaceOutcome = (profile: PlayerProfile, outcome: RaceOutcome, now = new Date()): AppliedResult => {
+export const applyRaceOutcome = (
+  profile: PlayerProfile,
+  outcome: RaceOutcome,
+  now = new Date(),
+): AppliedResult => {
   const reward = computeReward(outcome);
   const newBestTime = profile.bestTime === null || outcome.finishTime < profile.bestTime;
   const record: RaceRecord = {

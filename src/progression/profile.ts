@@ -1,5 +1,11 @@
 import { DEFAULT_BUILD, isValidBuild, type AircraftBuild } from '../aircraft/build';
-import { ALL_PARTS, DEFAULT_PART_IDS, getPart, type AircraftPart, type PartCategory } from '../aircraft/parts';
+import {
+  ALL_PARTS,
+  DEFAULT_PART_IDS,
+  getPart,
+  type AircraftPart,
+  type PartCategory,
+} from '../aircraft/parts';
 import { clamp, clamp01 } from '../core/math';
 
 export const STARTING_CREDITS = 2500;
@@ -72,7 +78,8 @@ export const isUnlockRuleMet = (profile: PlayerProfile, part: AircraftPart): boo
   }
 };
 
-export const isOwned = (profile: PlayerProfile, partId: string): boolean => profile.ownedParts.includes(partId);
+export const isOwned = (profile: PlayerProfile, partId: string): boolean =>
+  profile.ownedParts.includes(partId);
 
 export const isInstalled = (profile: PlayerProfile, part: AircraftPart): boolean =>
   profile.build[part.category] === part.id;
@@ -109,7 +116,11 @@ export type InstallResult =
   | { ok: true; profile: PlayerProfile }
   | { ok: false; reason: 'unknown-part' | 'not-owned' | 'wrong-category' };
 
-export const installPart = (profile: PlayerProfile, category: PartCategory, partId: string): InstallResult => {
+export const installPart = (
+  profile: PlayerProfile,
+  category: PartCategory,
+  partId: string,
+): InstallResult => {
   const part = getPart(partId);
   if (!part) return { ok: false, reason: 'unknown-part' };
   if (part.category !== category) return { ok: false, reason: 'wrong-category' };
@@ -129,8 +140,13 @@ export const updateSettings = (profile: PlayerProfile, patch: Partial<PlayerSett
 });
 
 export const sanitiseSettings = (settings: Partial<PlayerSettings> | undefined): PlayerSettings => ({
-  assist: clamp01(typeof settings?.assist === 'number' && Number.isFinite(settings.assist) ? settings.assist : DEFAULT_SETTINGS.assist),
-  invertPitch: typeof settings?.invertPitch === 'boolean' ? settings.invertPitch : DEFAULT_SETTINGS.invertPitch,
+  assist: clamp01(
+    typeof settings?.assist === 'number' && Number.isFinite(settings.assist)
+      ? settings.assist
+      : DEFAULT_SETTINGS.assist,
+  ),
+  invertPitch:
+    typeof settings?.invertPitch === 'boolean' ? settings.invertPitch : DEFAULT_SETTINGS.invertPitch,
   audio: typeof settings?.audio === 'boolean' ? settings.audio : DEFAULT_SETTINGS.audio,
   sensitivity: clamp(
     typeof settings?.sensitivity === 'number' && Number.isFinite(settings.sensitivity)
@@ -152,7 +168,9 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
   const data = raw as Record<string, unknown>;
 
   const credits =
-    typeof data.credits === 'number' && Number.isFinite(data.credits) ? clamp(Math.floor(data.credits), 0, 9_999_999) : base.credits;
+    typeof data.credits === 'number' && Number.isFinite(data.credits)
+      ? clamp(Math.floor(data.credits), 0, 9_999_999)
+      : base.credits;
 
   const ownedSet = new Set(base.ownedParts);
   if (Array.isArray(data.ownedParts)) {
@@ -175,8 +193,11 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 
   const bestTime =
-    typeof data.bestTime === 'number' && Number.isFinite(data.bestTime) && data.bestTime > 0 ? data.bestTime : null;
-  const bestTimeBuild = bestTime !== null && isValidBuild(data.bestTimeBuild) ? { ...data.bestTimeBuild } : null;
+    typeof data.bestTime === 'number' && Number.isFinite(data.bestTime) && data.bestTime > 0
+      ? data.bestTime
+      : null;
+  const bestTimeBuild =
+    bestTime !== null && isValidBuild(data.bestTimeBuild) ? { ...data.bestTimeBuild } : null;
 
   const history: RaceRecord[] = [];
   if (Array.isArray(data.history)) {
@@ -193,7 +214,10 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
           circuitId: typeof record.circuitId === 'string' ? record.circuitId : 'caldera-ridge',
           position: clamp(Math.floor(record.position), 1, 99),
           time: record.time,
-          rawTime: typeof record.rawTime === 'number' && Number.isFinite(record.rawTime) ? record.rawTime : record.time,
+          rawTime:
+            typeof record.rawTime === 'number' && Number.isFinite(record.rawTime)
+              ? record.rawTime
+              : record.time,
           missedGates: positiveInt(record.missedGates),
           credits: positiveInt(record.credits),
           date: typeof record.date === 'string' ? record.date : new Date(0).toISOString(),
