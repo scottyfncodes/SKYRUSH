@@ -17,7 +17,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     // SwiftShader keeps WebGL working in headless CI.
     launchOptions: {
-      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        '--ignore-gpu-blocklist',
+      ],
     },
   },
   projects: [
