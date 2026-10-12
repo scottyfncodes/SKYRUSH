@@ -73,6 +73,14 @@ test.describe('responsive layout', () => {
     }
     await expectNoOverlap(page.getByTestId('hud-speed'), page.getByTestId('hud-boost'), 'speed and boost');
     await expectNoOverlap(page.getByTestId('hud-timer'), page.getByTestId('hud-gate'), 'timer and gate');
+    // The combo meter sits under the timer and clear of the corner panels.
+    const combo = page.locator('.hud-style');
+    await expect(combo).toBeVisible();
+    await expectInsideViewport(page, combo, 'combo meter');
+    await expectNoOverlap(combo, page.getByTestId('hud-timer'), 'combo and timer');
+    await expectNoOverlap(combo, page.getByTestId('hud-gate'), 'combo and gate');
+    await expectNoOverlap(combo, page.getByTestId('hud-position'), 'combo and position');
+    await expectNoOverlap(combo, page.getByTestId('hud-speed'), 'combo and speed');
 
     const touch = page.getByTestId('touch-controls');
     if (isMobile) {
@@ -103,6 +111,7 @@ test.describe('responsive layout', () => {
         page.getByTestId('hud-speed'),
         'pause and speed',
       );
+      await expectNoOverlap(page.getByTestId('touch-pause'), combo, 'pause and combo');
       await expect(page.getByTestId('rotate-prompt')).toBeHidden();
     } else {
       await expect(touch).toBeHidden();
@@ -163,7 +172,8 @@ test.describe('responsive layout', () => {
     await expectInsideViewport(page, page.getByTestId('results-position'), 'results position');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    await page.getByTestId('results-again').scrollIntoViewIfNeeded();
+    // Replay is reachable without scrolling, even on a short landscape phone.
     await expectInsideViewport(page, page.getByTestId('results-again'), 'race again button');
+    await expectInsideViewport(page, page.getByTestId('results-highlights'), 'run highlights');
   });
 });

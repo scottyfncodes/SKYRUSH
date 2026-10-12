@@ -232,6 +232,42 @@ test.describe('SKYRUSH core flow', () => {
     expect((await getState(page)).credits).toBe(state.credits);
   });
 
+  test('bonus rings score, refill boost and show in the HUD and results', async ({ page }) => {
+    await openGame(page);
+    await startRaceFromMenu(page);
+    await waitForRacing(page);
+    await page.evaluate(() => window.__skyrushTest!.approachRing(0, 120));
+    await expect
+      .poll(async () => (await getState(page)).race?.style.rings, { timeout: 30_000, intervals: [100] })
+      .toBe(1);
+    await expect(page.getByTestId('hud-rings')).toHaveText('◯ 1/6');
+    await expect(page.getByTestId('hud-style')).not.toHaveText('0');
+
+    await page.evaluate(() => window.__skyrushTest!.simulateToFinish());
+    await expect(page.getByTestId('results')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('results-highlights')).toContainText('1/6');
+    await expect(page.getByTestId('results-next')).toBeVisible();
+  });
+
+  test('returning players go straight from the menu to the grid; Enter replays from results', async ({
+    page,
+  }) => {
+    await seedProfile(page, { racesCompleted: 3 });
+    await openGame(page);
+    await page.getByTestId('menu-race').click();
+    await expect(page.getByTestId('hud')).toBeVisible();
+    await expect(page.getByTestId('briefing')).toBeHidden();
+    await waitForRacing(page);
+    await page.evaluate(() => window.__skyrushTest!.simulateToFinish());
+    await expect(page.getByTestId('results')).toBeVisible({ timeout: 15_000 });
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('results')).toBeHidden();
+    const again = await getState(page);
+    expect(again.screen).toBe('race');
+    expect(again.race!.phase).toBe('countdown');
+    expect(again.race!.style.score).toBe(0);
+  });
+
   test('recovers from malformed saved data', async ({ page }) => {
     await page.addInitScript(() => window.localStorage.setItem('skyrush.profile.v1', '{not json'));
     const errors = collectErrors(page);
