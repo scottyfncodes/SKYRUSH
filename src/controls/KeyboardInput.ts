@@ -14,6 +14,7 @@ export interface KeyBindings {
   pause: string[];
   restart: string[];
   recenter: string[];
+  mute: string[];
 }
 
 /** Published in the in-game controls panel; keep the two in sync. */
@@ -30,9 +31,10 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   pause: ['Escape', 'KeyP'],
   restart: ['KeyR'],
   recenter: ['KeyC'],
+  mute: ['KeyM'],
 };
 
-export type KeyboardAction = 'pause' | 'restart' | 'recenter';
+export type KeyboardAction = 'pause' | 'restart' | 'recenter' | 'mute';
 
 /**
  * Keyboard flight input. Axes ramp toward the pressed direction so taps give
@@ -115,6 +117,7 @@ export class KeyboardInput {
     if (this.bindings.pause.includes(code)) action = 'pause';
     else if (this.bindings.restart.includes(code)) action = 'restart';
     else if (this.bindings.recenter.includes(code)) action = 'recenter';
+    else if (this.bindings.mute.includes(code)) action = 'mute';
     if (action) this.actionListeners.forEach((listener) => listener(action!));
   }
 

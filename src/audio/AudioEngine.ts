@@ -17,6 +17,7 @@ export class AudioEngine {
   private boostGain: GainNode | null = null;
   private enabled = true;
   private engineRunning = false;
+  private noise: AudioBuffer | null = null;
 
   get available(): boolean {
     return this.context !== null;
@@ -52,6 +53,7 @@ export class AudioEngine {
 
   private noiseBuffer(): AudioBuffer | null {
     if (!this.context) return null;
+    if (this.noise) return this.noise;
     const length = this.context.sampleRate * 2;
     const buffer = this.context.createBuffer(1, length, this.context.sampleRate);
     const data = buffer.getChannelData(0);
@@ -60,6 +62,7 @@ export class AudioEngine {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       data[i] = (seed / 4294967296) * 2 - 1;
     }
+    this.noise = buffer;
     return buffer;
   }
 
@@ -205,6 +208,79 @@ export class AudioEngine {
   finish(): void {
     const notes = [523, 659, 784, 1046];
     notes.forEach((note, index) => this.tone(note, 0.35, 'triangle', 0.3, index * 0.12));
+  }
+
+  /** Filtered noise sweep: the "whoosh" of air rushing past something close. */
+  private whoosh(from: number, to: number, duration: number, volume: number, when = 0): void {
+    if (!this.context || !this.master) return;
+    const buffer = this.noiseBuffer();
+    if (!buffer) return;
+    const ctx = this.context;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 1.4;
+    const gain = ctx.createGain();
+    const start = ctx.currentTime + when;
+    filter.frequency.setValueAtTime(from, start);
+    filter.frequency.exponentialRampToValueAtTime(to, start + duration);
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(volume, start + duration * 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+    source.connect(filter).connect(gain).connect(this.master);
+    source.start(start, Math.random() * 1.5);
+    source.stop(start + duration + 0.05);
+  }
+
+  /** Semitone offset for the current combo tier, so rewards climb in pitch as the multiplier grows. */
+  private static tierPitch(multiplier: number): number {
+    return 2 ** (((Math.min(4, Math.max(1, multiplier)) - 1) * 2) / 12);
+  }
+
+  /** Dead-centre gate: the gate chime plus a bright overtone. */
+  perfectGate(multiplier: number): void {
+    const p = AudioEngine.tierPitch(multiplier);
+    this.tone(1318 * p, 0.12, 'triangle', 0.26);
+    this.tone(1976 * p, 0.22, 'sine', 0.2, 0.05);
+    this.tone(2637 * p, 0.18, 'sine', 0.08, 0.1);
+  }
+
+  nearMiss(multiplier: number): void {
+    this.whoosh(2400, 500, 0.45, 0.32);
+    this.tone(660 * AudioEngine.tierPitch(multiplier), 0.14, 'triangle', 0.14, 0.12);
+  }
+
+  ring(multiplier: number): void {
+    const p = AudioEngine.tierPitch(multiplier);
+    [784, 988, 1175, 1568].forEach((note, index) =>
+      this.tone(note * p, 0.16, 'triangle', 0.2, index * 0.045),
+    );
+  }
+
+  overtake(multiplier: number): void {
+    const p = AudioEngine.tierPitch(multiplier);
+    this.tone(523 * p, 0.1, 'square', 0.1);
+    this.tone(784 * p, 0.16, 'square', 0.1, 0.07);
+  }
+
+  /** Multiplier tier up: short rising blip. */
+  comboUp(multiplier: number): void {
+    const p = AudioEngine.tierPitch(multiplier);
+    this.tone(880 * p, 0.08, 'sine', 0.16, 0.12);
+    this.tone(1320 * p, 0.14, 'sine', 0.14, 0.18);
+  }
+
+  /** Combo lost: soft and low so it informs without nagging. */
+  comboBreak(): void {
+    this.tone(392, 0.16, 'triangle', 0.14);
+    this.tone(294, 0.24, 'triangle', 0.12, 0.1);
+  }
+
+  /** Personal best on the results screen. */
+  personalBest(): void {
+    [659, 784, 988, 1319].forEach((note, index) => this.tone(note, 0.3, 'triangle', 0.22, index * 0.09));
+    this.tone(1976, 0.5, 'sine', 0.1, 0.36);
   }
 
   uiClick(): void {

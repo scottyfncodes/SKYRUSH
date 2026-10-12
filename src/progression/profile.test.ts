@@ -217,6 +217,7 @@ describe('settings and livery', () => {
       invertPitch: false,
       audio: true,
       sensitivity: 1,
+      haptics: true,
     });
     expect(sanitiseSettings({ assist: 5, sensitivity: 9 })).toMatchObject({ assist: 1, sensitivity: 1.5 });
     expect(sanitiseSettings({ assist: -1, sensitivity: 0 })).toMatchObject({ assist: 0, sensitivity: 0.5 });
@@ -229,7 +230,13 @@ describe('settings and livery', () => {
   it('updateSettings merges and sanitises without mutating', () => {
     const profile = createDefaultProfile();
     const next = updateSettings(profile, { invertPitch: true, sensitivity: 2 });
-    expect(next.settings).toEqual({ assist: 0.6, invertPitch: true, audio: true, sensitivity: 1.5 });
+    expect(next.settings).toEqual({
+      assist: 0.6,
+      invertPitch: true,
+      audio: true,
+      sensitivity: 1.5,
+      haptics: true,
+    });
     expect(profile.settings.invertPitch).toBe(false);
   });
 

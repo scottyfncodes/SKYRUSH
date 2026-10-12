@@ -84,7 +84,7 @@ describe('computeReward', () => {
       crashes: 0,
       parTime: PAR,
     });
-    expect(reward).toEqual({ base: 1500, cleanBonus: 300, timeBonus: 150, total: 1950 });
+    expect(reward).toEqual({ base: 1500, cleanBonus: 300, timeBonus: 150, styleBonus: 0, total: 1950 });
   });
 });
 
@@ -111,6 +111,7 @@ describe('applyRaceOutcome', () => {
       credits: 1950,
       date: '2026-01-02T03:04:05.000Z',
       build: DEFAULT_BUILD,
+      style: 0,
     });
     expect(result.profile.history[0]).toEqual(result.record);
     // Input untouched.

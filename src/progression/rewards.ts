@@ -1,6 +1,8 @@
 import type { AircraftBuild } from '../aircraft/build';
 import type { AircraftPart } from '../aircraft/parts';
 import { newlyUnlockedParts, type PlayerProfile, type RaceRecord, MAX_HISTORY } from './profile';
+import { BADGES, badgesEarned, nextGoal, type Badge, type NextGoal, type RunStyleStats } from './badges';
+import { styleCredits } from '../style/StyleTracker';
 
 export interface RaceOutcome {
   circuitId: string;
@@ -13,12 +15,15 @@ export interface RaceOutcome {
   penaltySeconds: number;
   parTime: number;
   build: AircraftBuild;
+  /** Style stats for the race; omitted by callers that predate style scoring. */
+  style?: RunStyleStats;
 }
 
 export interface RewardBreakdown {
   base: number;
   cleanBonus: number;
   timeBonus: number;
+  styleBonus: number;
   total: number;
 }
 
@@ -28,7 +33,9 @@ const TIME_BONUS_PER_SECOND = 15;
 const TIME_BONUS_CAP = 600;
 
 export const computeReward = (
-  outcome: Pick<RaceOutcome, 'position' | 'finishTime' | 'missedGates' | 'crashes' | 'parTime'>,
+  outcome: Pick<RaceOutcome, 'position' | 'finishTime' | 'missedGates' | 'crashes' | 'parTime'> & {
+    style?: Pick<RunStyleStats, 'score'>;
+  },
 ): RewardBreakdown => {
   const index = Math.max(0, Math.min(outcome.position - 1, POSITION_REWARDS.length - 1));
   const base = POSITION_REWARDS[index]!;
@@ -37,7 +44,8 @@ export const computeReward = (
     0,
     Math.min(TIME_BONUS_CAP, Math.round((outcome.parTime - outcome.finishTime) * TIME_BONUS_PER_SECOND)),
   );
-  return { base, cleanBonus, timeBonus, total: base + cleanBonus + timeBonus };
+  const styleBonus = styleCredits(outcome.style?.score ?? 0);
+  return { base, cleanBonus, timeBonus, styleBonus, total: base + cleanBonus + timeBonus + styleBonus };
 };
 
 export interface AppliedResult {
@@ -46,6 +54,11 @@ export interface AppliedResult {
   newBestTime: boolean;
   unlocked: AircraftPart[];
   record: RaceRecord;
+  newBestStyle: boolean;
+  /** Badges earned by this race (each unlocks a livery). */
+  badges: Badge[];
+  /** Closest unearned badge after this race, or null when every badge is owned. */
+  next: NextGoal | null;
 }
 
 /** Applies a race outcome to the profile: credits, counters, best time, history, unlocks. */
@@ -65,7 +78,18 @@ export const applyRaceOutcome = (
     credits: reward.total,
     date: now.toISOString(),
     build: { ...outcome.build },
+    style: outcome.style?.score ?? 0,
   };
+  const style = outcome.style;
+  const earned = style ? badgesEarned(profile.badges, style) : [];
+  const badgeProgress = { ...profile.badgeProgress };
+  if (style) {
+    for (const badge of BADGES) {
+      badgeProgress[badge.id] = Math.max(badgeProgress[badge.id] ?? 0, badge.progress(style));
+    }
+  }
+  const styleScore = style?.score ?? 0;
+  const newBestStyle = styleScore > profile.bestStyle;
   const next: PlayerProfile = {
     ...profile,
     credits: profile.credits + reward.total,
@@ -75,6 +99,19 @@ export const applyRaceOutcome = (
     bestTime: newBestTime ? outcome.finishTime : profile.bestTime,
     bestTimeBuild: newBestTime ? { ...outcome.build } : profile.bestTimeBuild,
     history: [record, ...profile.history].slice(0, MAX_HISTORY),
+    bestStyle: Math.max(profile.bestStyle, styleScore),
+    bestMultiplier: Math.max(profile.bestMultiplier, style?.bestMultiplier ?? 1),
+    badges: [...profile.badges, ...earned.map((badge) => badge.id)],
+    badgeProgress,
   };
-  return { profile: next, reward, newBestTime, unlocked: newlyUnlockedParts(profile, next), record };
+  return {
+    profile: next,
+    reward,
+    newBestTime,
+    unlocked: newlyUnlockedParts(profile, next),
+    record,
+    newBestStyle,
+    badges: earned,
+    next: nextGoal(next.badges, next.badgeProgress),
+  };
 };

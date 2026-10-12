@@ -13,4 +13,10 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
     },
   },
+  {
+    // Node build helpers (e.g. the icon renderer) run outside the browser.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    rules: { 'no-console': 'off' },
+  },
 );

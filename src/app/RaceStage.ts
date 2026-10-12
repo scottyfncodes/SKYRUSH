@@ -1,5 +1,5 @@
-import { Vector3 } from 'three';
-import type { Circuit } from '../course/circuit';
+import { Quaternion, Vector3 } from 'three';
+import { lookOrientation, type Circuit } from '../course/circuit';
 import type { Renderer } from '../render/Renderer';
 import { createWorld, type WorldHandles } from '../render/World';
 import { AircraftView } from '../render/AircraftView';
@@ -12,15 +12,19 @@ import {
   type Standing,
 } from '../race/RaceSimulation';
 import { FixedStepClock } from '../core/time';
-import { NEUTRAL_INPUT, type FlightInput } from '../flight/FlightModel';
+import { NEUTRAL_INPUT, resetFlightState, type FlightInput } from '../flight/FlightModel';
 import { resolveBuild, type AircraftBuild } from '../aircraft/build';
 import { AI_PERSONALITIES, computeAiInput, type AiPersonality } from '../ai/AiPilot';
 import type { InputManager } from '../controls/InputManager';
 import type { Hud, HudState } from '../ui/Hud';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { CrashBurst } from '../render/Effects';
+import { Contrails, SpeedLines } from '../render/FlightEffects';
+import { pulse, prefersReducedMotion } from '../ui/haptics';
+import type { StyleAward } from '../style/StyleTracker';
+import { formatCredits } from '../core/format';
 import type { PlayerSettings } from '../progression/profile';
-import { clamp } from '../core/math';
+import { clamp, clamp01, smoothstep } from '../core/math';
 
 export interface RaceStageOptions {
   circuit: Circuit;
@@ -49,6 +53,9 @@ export class RaceStage {
   private readonly views = new Map<string, AircraftView>();
   private readonly clock = new FixedStepClock(1 / 120, 10);
   private readonly burst: CrashBurst;
+  private readonly speedLines: SpeedLines | null;
+  private readonly contrails: Contrails;
+  private readonly reducedMotion: boolean;
   private readonly configs: RacerConfig[];
   private readonly missedGates = new Set<number>();
   private readonly playerInput: FlightInput = { ...NEUTRAL_INPUT };
@@ -66,6 +73,11 @@ export class RaceStage {
     this.world = createWorld(circuit, { shadows: renderer.options.shadows });
     this.camera = new ChaseCamera(renderer.aspect);
     this.burst = new CrashBurst(this.world.scene);
+    this.reducedMotion = prefersReducedMotion();
+    this.camera.motionScale = this.reducedMotion ? 0 : 1;
+    this.speedLines = this.reducedMotion ? null : new SpeedLines(this.world.scene);
+    const livery = resolveBuild(build).livery;
+    this.contrails = new Contrails(this.world.scene, livery.trail ?? 0xf4f1ea);
     this.configs = [
       { id: 'player', name: 'You', callsign: 'YOU', isPlayer: true, build },
       ...AI_PERSONALITIES.map((ai) => ({
@@ -94,6 +106,7 @@ export class RaceStage {
       gateDistance: 0,
       marker: null,
       penalties: 0,
+      style: { score: 0, multiplier: 1, comboTime: 0, rings: 0, ringTotal: circuit.rings.length },
     };
     for (const config of this.configs) {
       const view = new AircraftView(resolveBuild(config.build));
@@ -120,6 +133,9 @@ export class RaceStage {
       }
     }
     this.world.setGateStates(0, this.missedGates);
+    this.world.resetRings();
+    this.contrails.reset();
+    this.options.hud.resetStyle();
     const next = this.options.circuit.gates[0]!.position;
     this.camera.snap(this.sim.player.flight, next);
     this.options.hud.clearMessage();
@@ -172,6 +188,20 @@ export class RaceStage {
       }
     }
     this.render(frameDt);
+  }
+
+  /** Test harness: places the player on a level approach to a bonus ring. */
+  approachRing(index: number, distance: number): void {
+    const ring = this.options.circuit.rings[index];
+    if (!ring || this.sim.phase !== 'racing') return;
+    const position = ring.position.clone().addScaledVector(ring.normal, -distance);
+    const orientation = lookOrientation(position, ring.position, new Quaternion());
+    const player = this.sim.player;
+    resetFlightState(player.flight, position, orientation, 85);
+    player.previousPosition.copy(position);
+    this.sim.style.resetProximity();
+    this.contrails.reset();
+    this.camera.snap(player.flight, ring.position);
   }
 
   /** Test harness: runs the simulation synchronously until the player finishes. */
@@ -231,6 +261,16 @@ export class RaceStage {
         audio.countdownBeep(true);
         window.setTimeout(() => hud.clearCountdown(), 900);
         break;
+      case 'style':
+        this.onStyle(event.award, event.ring, event.gate);
+        break;
+      case 'combo-break':
+        // Losing a one-move chain is not worth interrupting the player for.
+        if (event.combo.chain >= 2) {
+          audio.comboBreak();
+          hud.showToast(`COMBO LOST  ×${formatMultiplierShort(event.combo.multiplier)}`, 'break', 1.1);
+        }
+        break;
       case 'gate':
         if (event.isPlayer) {
           audio.gatePass();
@@ -257,6 +297,8 @@ export class RaceStage {
         }
         if (event.isPlayer) {
           audio.crash();
+          this.camera.impulse(0.8);
+          pulse(this.options.settings.haptics, 60);
           hud.showMessage(`CRASHED  +${event.penalty}s`, 'bad', 2.5);
         }
         break;
@@ -270,6 +312,7 @@ export class RaceStage {
         }
         if (event.isPlayer) {
           this.recenterCamera();
+          this.contrails.reset();
           this.options.input.reset();
         }
         break;
@@ -284,11 +327,53 @@ export class RaceStage {
         }
         break;
       case 'scrape':
+        if (event.isPlayer) {
+          this.camera.impulse(0.35);
+          pulse(this.options.settings.haptics, 25);
+        }
         break;
       case 'finish':
         if (event.isPlayer) audio.finish();
         break;
     }
+  }
+
+  private onStyle(award: StyleAward, ring: number | undefined, gate: number | undefined): void {
+    const { hud, audio, settings } = this.options;
+    const points = `+${formatCredits(award.points)}`;
+    const tier = award.tierUp ? `  ×${formatMultiplierShort(award.multiplier)}` : '';
+    const tone = award.tierUp ? 'tier' : 'skill';
+    switch (award.kind) {
+      case 'gate':
+        // Ordinary gates already chime; the score ticking up is enough.
+        return;
+      case 'perfect-gate':
+        audio.perfectGate(award.multiplier);
+        if (gate !== undefined) this.world.flashGate(gate);
+        hud.showToast(`PERFECT GATE ${points}${tier}`, tone);
+        pulse(settings.haptics, 12);
+        break;
+      case 'near-miss':
+        audio.nearMiss(award.multiplier);
+        this.camera.impulse(0.12);
+        hud.showToast(`NEAR MISS ${points}${tier}`, tone);
+        pulse(settings.haptics, 18);
+        break;
+      case 'ring':
+        audio.ring(award.multiplier);
+        if (ring !== undefined) this.world.collectRing(ring);
+        hud.showToast(
+          `RING ${this.sim.style.rings}/${this.options.circuit.rings.length} ${points} · BOOST${tier}`,
+          award.tierUp ? 'tier' : 'ring',
+        );
+        pulse(settings.haptics, [12, 40, 12]);
+        break;
+      case 'overtake':
+        audio.overtake(award.multiplier);
+        hud.showToast(`OVERTAKE ${points}${tier}`, tone);
+        break;
+    }
+    if (award.tierUp) audio.comboUp(award.multiplier);
   }
 
   private render(frameDt: number): void {
@@ -308,6 +393,29 @@ export class RaceStage {
     const nextGate = circuit.gates[nextIndex]!;
     if (frameDt > 0 && player.respawnTimer <= 0)
       this.camera.update(player.flight, frameDt, nextGate.position);
+
+    // Speed sensation: streaks near top speed and while boosting; trails in fast, hard turns.
+    const flight = player.flight;
+    const speedRatio = flight.speed / player.params.maxSpeed;
+    const racing = this.sim.phase !== 'countdown';
+    if (frameDt > 0) {
+      const streaks = racing ? smoothstep(0.72, 1.02, speedRatio) * 0.75 + (flight.boosting ? 0.45 : 0) : 0;
+      this.speedLines?.update(this.camera.camera, clamp01(streaks), flight.speed, frameDt);
+      if (player.respawnTimer <= 0) {
+        const fast = smoothstep(0.55, 0.95, speedRatio);
+        const turning = Math.abs(Math.sin(flight.bank)) * smoothstep(0.35, 0.75, speedRatio);
+        const trail = racing ? clamp01(fast * 0.35 + turning * 0.75 + (flight.boosting ? 0.25 : 0)) : 0;
+        const view = this.views.get(player.config.id);
+        if (view)
+          this.contrails.update(
+            flight.position,
+            flight.orientation,
+            view.handles.wingtips,
+            trail,
+            this.camera.camera.position,
+          );
+      }
+    }
     this.camera.setAspect(renderer.aspect);
     this.world.update(frameDt, player.flight.position);
 
@@ -329,6 +437,11 @@ export class RaceStage {
     state.airbrake = player.flight.airbrake;
     state.stalled = player.flight.stalled && this.sim.phase === 'racing';
     state.penalties = player.penaltySeconds;
+    const style = this.sim.style;
+    state.style.score = style.score;
+    state.style.multiplier = style.multiplier;
+    state.style.comboTime = style.comboFraction;
+    state.style.rings = style.rings;
     _toGate.subVectors(nextGate.position, player.flight.position);
     state.gateDistance = _toGate.length();
     state.marker = player.finished ? null : this.projectMarker(nextGate.position);
@@ -379,6 +492,11 @@ export class RaceStage {
     }
     this.views.clear();
     this.burst.dispose();
+    this.speedLines?.dispose();
+    this.contrails.dispose();
     this.world.dispose();
   }
 }
+
+const formatMultiplierShort = (multiplier: number): string =>
+  Number.isInteger(multiplier) ? String(multiplier) : multiplier.toFixed(1);

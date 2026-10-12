@@ -58,6 +58,7 @@ export class MainMenuScreen extends Screen {
         profile.bestTime === null ? '--:--.---' : formatRaceTime(profile.bestTime),
         'menu-best',
       ),
+      stat('Best style', profile.bestStyle > 0 ? formatCredits(profile.bestStyle) : '—', 'menu-style'),
       stat('Races', String(profile.racesCompleted), 'menu-races'),
       stat('Wins', String(profile.wins), 'menu-wins'),
     );

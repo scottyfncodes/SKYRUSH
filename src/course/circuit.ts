@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { createTerrain, type RoutePoint, type Terrain } from './terrain';
-import type { GateDefinition, GateKind } from './gates';
+import type { BonusRing, GateDefinition, GateKind } from './gates';
 
 export interface GateSpec {
   x: number;
@@ -26,6 +26,8 @@ export interface Circuit {
   location: string;
   description: string;
   gates: GateDefinition[];
+  /** Optional low-level rings off the racing line: points and boost for players who dive for them. */
+  rings: BonusRing[];
   terrain: Terrain;
   spawn: { position: Vector3; orientation: Quaternion; speed: number };
   /** Grid slots for the four racers relative to the spawn (right, up, back offsets). */
@@ -64,6 +66,30 @@ const GATE_SPECS: readonly GateSpec[] = [
 ];
 
 const SPAWN = { x: 0, z: -420, floor: 0, altitude: 55 };
+
+/**
+ * Bonus rings sit low over the valley floor between two gates, 40–60 m below the
+ * safe racing line. Diving for one is a visible, optional risk: more points and
+ * a boost refill, but less room for error near the ground and a climb to make
+ * the next gate. `after` is the gate the segment starts from.
+ */
+interface RingSpec {
+  after: number;
+  t: number;
+  lateral: number;
+  height: number;
+}
+
+const RING_SPECS: readonly RingSpec[] = [
+  { after: 0, t: 0.55, lateral: 0, height: 12 },
+  { after: 2, t: 0.5, lateral: -14, height: 13 },
+  { after: 5, t: 0.6, lateral: 12, height: 13 },
+  { after: 7, t: 0.5, lateral: 0, height: 12 },
+  { after: 10, t: 0.5, lateral: 16, height: 11 },
+  { after: 12, t: 0.45, lateral: -12, height: 13 },
+];
+
+export const RING_RADIUS = 7.5;
 
 const ROUTE: readonly RoutePoint[] = [
   { x: SPAWN.x, z: SPAWN.z - 500, floor: 0 },
@@ -115,6 +141,20 @@ export const createCircuit = (): Circuit => {
     };
   });
 
+  const rings: BonusRing[] = RING_SPECS.map((spec, index) => {
+    const from = gates[spec.after]!.position;
+    const to = gates[spec.after + 1]!.position;
+    const normal = horizontal(to.x - from.x, to.z - from.z);
+    const right = new Vector3(normal.z, 0, -normal.x);
+    const x = from.x + (to.x - from.x) * spec.t + right.x * spec.lateral;
+    const z = from.z + (to.z - from.z) * spec.t + right.z * spec.lateral;
+    let ground = -Infinity;
+    for (const offset of [-RING_RADIUS * 1.6, 0, RING_RADIUS * 1.6]) {
+      ground = Math.max(ground, terrain.heightAt(x + right.x * offset, z + right.z * offset));
+    }
+    return { index, position: new Vector3(x, ground + spec.height, z), normal, radius: RING_RADIUS };
+  });
+
   let length = 0;
   let previous = new Vector3(SPAWN.x, SPAWN.floor + SPAWN.altitude, SPAWN.z);
   for (const gate of gates) {
@@ -130,6 +170,7 @@ export const createCircuit = (): Circuit => {
     description:
       'Fifteen gates through a carved canyon: a flat-out opening straight, a long climb over the ridge, the Needle chicane and a sweeping return to the facility.',
     gates,
+    rings,
     terrain,
     spawn: {
       position: new Vector3(SPAWN.x, SPAWN.floor + SPAWN.altitude, SPAWN.z),

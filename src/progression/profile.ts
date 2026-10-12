@@ -1,12 +1,15 @@
 import { DEFAULT_BUILD, isValidBuild, type AircraftBuild } from '../aircraft/build';
 import {
   ALL_PARTS,
+  DEFAULT_LIVERY_ID,
   DEFAULT_PART_IDS,
+  getLivery,
   getPart,
   type AircraftPart,
   type PartCategory,
 } from '../aircraft/parts';
 import { clamp, clamp01 } from '../core/math';
+import { isBadgeId, isLiveryUnlocked } from './badges';
 
 export const STARTING_CREDITS = 2500;
 export const MAX_HISTORY = 12;
@@ -16,6 +19,8 @@ export interface PlayerSettings {
   invertPitch: boolean;
   audio: boolean;
   sensitivity: number; // 0.5..1.5
+  /** Short vibration pulses for big moments, where the browser supports it. */
+  haptics: boolean;
 }
 
 export interface RaceRecord {
@@ -27,6 +32,8 @@ export interface RaceRecord {
   credits: number;
   date: string; // ISO
   build: AircraftBuild;
+  /** Style score for the race (0 for races saved before style scoring existed). */
+  style: number;
 }
 
 export interface PlayerProfile {
@@ -41,6 +48,14 @@ export interface PlayerProfile {
   wins: number;
   history: RaceRecord[];
   settings: PlayerSettings;
+  /** Best style score in a single race. */
+  bestStyle: number;
+  /** Highest combo multiplier ever reached. */
+  bestMultiplier: number;
+  /** Earned skill badge ids (each unlocks a livery). */
+  badges: string[];
+  /** Best single-race progress (0..1) toward each badge, for "next unlock" hints. */
+  badgeProgress: Record<string, number>;
 }
 
 export const DEFAULT_SETTINGS: PlayerSettings = {
@@ -48,6 +63,7 @@ export const DEFAULT_SETTINGS: PlayerSettings = {
   invertPitch: false,
   audio: true,
   sensitivity: 1,
+  haptics: true,
 };
 
 export const createDefaultProfile = (): PlayerProfile => ({
@@ -62,6 +78,10 @@ export const createDefaultProfile = (): PlayerProfile => ({
   wins: 0,
   history: [],
   settings: { ...DEFAULT_SETTINGS },
+  bestStyle: 0,
+  bestMultiplier: 1,
+  badges: [],
+  badgeProgress: {},
 });
 
 export type PartStatus = 'installed' | 'owned' | 'available' | 'unaffordable' | 'locked';
@@ -129,10 +149,16 @@ export const installPart = (
   return { ok: true, profile: { ...profile, build: { ...profile.build, [category]: partId } } };
 };
 
-export const setLivery = (profile: PlayerProfile, liveryId: string): PlayerProfile => ({
-  ...profile,
-  build: { ...profile.build, livery: liveryId },
-});
+export const isLiveryAvailable = (profile: PlayerProfile, liveryId: string): boolean => {
+  const livery = getLivery(liveryId);
+  return livery !== undefined && isLiveryUnlocked(livery, profile.badges);
+};
+
+/** Applies a livery; unknown or still-locked liveries leave the profile unchanged. */
+export const setLivery = (profile: PlayerProfile, liveryId: string): PlayerProfile =>
+  isLiveryAvailable(profile, liveryId)
+    ? { ...profile, build: { ...profile.build, livery: liveryId } }
+    : profile;
 
 export const updateSettings = (profile: PlayerProfile, patch: Partial<PlayerSettings>): PlayerProfile => ({
   ...profile,
@@ -155,6 +181,7 @@ export const sanitiseSettings = (settings: Partial<PlayerSettings> | undefined):
     0.5,
     1.5,
   ),
+  haptics: typeof settings?.haptics === 'boolean' ? settings.haptics : DEFAULT_SETTINGS.haptics,
 });
 
 /** Parts whose unlock rule is satisfied by `after` but was not by `before`. */
@@ -180,6 +207,19 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
   }
   const ownedParts = [...ownedSet];
 
+  // Badges first: they decide which liveries the saved build may use.
+  const badges: string[] = [];
+  if (Array.isArray(data.badges)) {
+    for (const id of data.badges) if (isBadgeId(id) && !badges.includes(id)) badges.push(id);
+  }
+  const badgeProgress: Record<string, number> = {};
+  if (typeof data.badgeProgress === 'object' && data.badgeProgress !== null) {
+    for (const [id, value] of Object.entries(data.badgeProgress as Record<string, unknown>)) {
+      if (isBadgeId(id) && typeof value === 'number' && Number.isFinite(value))
+        badgeProgress[id] = clamp01(value);
+    }
+  }
+
   let build: AircraftBuild = { ...base.build };
   if (isValidBuild(data.build)) {
     build = { ...data.build };
@@ -187,6 +227,8 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     for (const category of ['fuselage', 'engine', 'wings'] as const) {
       if (!ownedSet.has(build[category])) build[category] = base.build[category];
     }
+    const livery = getLivery(build.livery);
+    if (!livery || !isLiveryUnlocked(livery, badges)) build.livery = DEFAULT_LIVERY_ID;
   }
 
   const positiveInt = (value: unknown): number =>
@@ -222,6 +264,7 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
           credits: positiveInt(record.credits),
           date: typeof record.date === 'string' ? record.date : new Date(0).toISOString(),
           build: { ...record.build },
+          style: positiveInt(record.style),
         });
       }
       if (history.length >= MAX_HISTORY) break;
@@ -240,5 +283,12 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     wins: positiveInt(data.wins),
     history,
     settings: sanitiseSettings(data.settings as Partial<PlayerSettings> | undefined),
+    bestStyle: positiveInt(data.bestStyle),
+    bestMultiplier:
+      typeof data.bestMultiplier === 'number' && Number.isFinite(data.bestMultiplier)
+        ? clamp(data.bestMultiplier, 1, 4)
+        : 1,
+    badges,
+    badgeProgress,
   };
 };

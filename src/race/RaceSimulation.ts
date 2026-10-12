@@ -15,7 +15,14 @@ import {
   NEUTRAL_INPUT,
 } from '../flight/FlightModel';
 import { lookOrientation, type Circuit } from '../course/circuit';
-import { testGateCrossing } from '../course/gates';
+import { gateCrossingOffset, testGateCrossing, testRingCrossing } from '../course/gates';
+import {
+  StyleTracker,
+  terrainClearance,
+  type ComboBreak,
+  type ComboBreakReason,
+  type StyleAward,
+} from '../style/StyleTracker';
 import { computeAiInput, computeCruiseInput, type AiPersonality } from '../ai/AiPilot';
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -64,7 +71,10 @@ export type RaceEvent =
   | { type: 'scrape'; racerId: string; isPlayer: boolean }
   | { type: 'overheat'; racerId: string; isPlayer: boolean }
   | { type: 'out-of-bounds'; racerId: string; isPlayer: boolean }
-  | { type: 'finish'; racerId: string; isPlayer: boolean; position: number; time: number };
+  | { type: 'finish'; racerId: string; isPlayer: boolean; position: number; time: number }
+  /** Player-only style scoring. `ring` is set for bonus-ring awards, `gate` for gate awards. */
+  | { type: 'style'; award: StyleAward; ring?: number; gate?: number }
+  | { type: 'combo-break'; combo: ComboBreak };
 
 export interface RaceOptions {
   assist?: FlightAssist;
@@ -95,6 +105,8 @@ const AI_ASSIST: FlightAssist = { strength: 0.6 };
 const RESPAWN_DELAY = 1.6;
 const RESPAWN_SPEED = 62;
 const WRONG_WAY_SECONDS = 3.5;
+/** Boost energy refunded to the player for skilful moves (fraction of a full tank). */
+export const BOOST_REWARD = { perfectGate: 0.12, ring: 0.25, nearMiss: 0.08 } as const;
 const _tmp = new Vector3();
 const _q = new Quaternion();
 
@@ -115,6 +127,9 @@ export class RaceSimulation {
   readonly outOfBoundsPenalty: number;
   readonly aiSkill: number;
   private readonly environment: FlightEnvironment;
+  /** Style scoring for the player. Recreated with the simulation, so restarts never carry state over. */
+  readonly style = new StyleTracker();
+  private readonly playerAhead = new Map<string, boolean>();
 
   constructor(
     readonly circuit: Circuit,
@@ -207,6 +222,67 @@ export class RaceSimulation {
       this.stepRacer(racer, dt, racer.config.isPlayer ? playerInput : null);
     }
     this.updateStandings();
+    this.trackOvertakes();
+  }
+
+  private pushStyle(award: StyleAward | null, extra: { ring?: number; gate?: number } = {}): void {
+    if (award) this.events.push({ type: 'style', award, ...extra });
+  }
+
+  private breakCombo(reason: ComboBreakReason): void {
+    const lost = this.style.breakCombo(reason);
+    if (lost) this.events.push({ type: 'combo-break', combo: lost });
+  }
+
+  private refundBoost(amount: number): void {
+    const flight = this.player.flight;
+    flight.boostEnergy = Math.min(1, flight.boostEnergy + amount);
+  }
+
+  /** Overtakes score when the player moves ahead of an opponent (rate limited per opponent). */
+  private trackOvertakes(): void {
+    const player = this.player;
+    const active = !player.finished && player.respawnTimer <= 0;
+    for (const racer of this.racers) {
+      if (racer === player) continue;
+      const ahead = player.progress > racer.progress;
+      const before = this.playerAhead.get(racer.config.id);
+      this.playerAhead.set(racer.config.id, ahead);
+      if (active && before === false && ahead && !racer.finished) {
+        this.pushStyle(this.style.overtake(racer.config.id, this.clock));
+      }
+    }
+  }
+
+  /** Player-only style work after the flight step: proximity skims, rings and the combo clock. */
+  private stepPlayerStyle(racer: Racer, dt: number): void {
+    const { flight } = racer;
+    _tmp.set(1, 0, 0).applyQuaternion(flight.orientation);
+    const clearance = terrainClearance(
+      flight.position.x,
+      flight.position.y,
+      flight.position.z,
+      _tmp.x,
+      _tmp.z,
+      this.circuit.terrain.heightAt,
+    );
+    const skim = this.style.proximity(clearance, flight.speed, dt);
+    if (skim) {
+      this.refundBoost(BOOST_REWARD.nearMiss);
+      this.pushStyle(skim);
+    }
+    for (const ring of this.circuit.rings) {
+      if (this.style.ringsCollected.has(ring.index)) continue;
+      if (testRingCrossing(ring, racer.previousPosition, flight.position)) {
+        const award = this.style.ring(ring.index);
+        if (award) {
+          this.refundBoost(BOOST_REWARD.ring);
+          this.pushStyle(award, { ring: ring.index });
+        }
+      }
+    }
+    const expired = this.style.update(dt);
+    if (expired) this.events.push({ type: 'combo-break', combo: expired });
   }
 
   private stepRacer(racer: Racer, dt: number, playerInput: FlightInput | null): void {
@@ -260,10 +336,12 @@ export class RaceSimulation {
       flight.velocity.set(0, 0, 0);
       flight.speed = 0;
       this.events.push({ type: 'crash', racerId: config.id, isPlayer, penalty });
+      if (isPlayer && !racer.finished) this.breakCombo('crash');
       return;
     }
     if (flight.groundContact === 'scrape') {
       this.events.push({ type: 'scrape', racerId: config.id, isPlayer });
+      if (isPlayer && !racer.finished) this.breakCombo('scrape');
     }
 
     const horizontal = Math.hypot(flight.position.x, flight.position.z);
@@ -271,10 +349,12 @@ export class RaceSimulation {
       racer.penaltySeconds += this.outOfBoundsPenalty;
       racer.respawnTimer = RESPAWN_DELAY * 0.5;
       this.events.push({ type: 'out-of-bounds', racerId: config.id, isPlayer });
+      if (isPlayer && !racer.finished) this.breakCombo('out-of-bounds');
       return;
     }
 
     if (racer.finished) return;
+    if (isPlayer) this.stepPlayerStyle(racer, dt);
 
     const gate = this.circuit.gates[racer.nextGate]!;
     const crossing = testGateCrossing(gate, racer.previousPosition, flight.position);
@@ -284,6 +364,12 @@ export class RaceSimulation {
       racer.lastGateTime = this.clock;
       racer.splitTimes.push(this.clock);
       this.events.push({ type: 'gate', racerId: config.id, gate: gate.index, isPlayer, time: this.clock });
+      if (isPlayer) {
+        const offset = gateCrossingOffset(gate, racer.previousPosition, flight.position) ?? 1;
+        const award = this.style.gate(offset);
+        if (award.kind === 'perfect-gate') this.refundBoost(BOOST_REWARD.perfectGate);
+        this.pushStyle(award, { gate: gate.index });
+      }
       if (racer.nextGate >= this.gateCount) this.finish(racer);
     } else if (crossing === 'missed') {
       racer.missedGates += 1;
@@ -298,6 +384,7 @@ export class RaceSimulation {
         isPlayer,
         penalty: this.missPenalty,
       });
+      if (isPlayer) this.breakCombo('missed-gate');
       if (racer.nextGate >= this.gateCount) this.finish(racer);
     }
 
@@ -358,6 +445,7 @@ export class RaceSimulation {
     racer.flight.boostEnergy = Math.max(racer.flight.boostEnergy, 0.4);
     racer.previousPosition.copy(position);
     racer.wrongWayTimer = 0;
+    if (racer.config.isPlayer) this.style.resetProximity();
   }
 
   /** Progress along the course in gates (fractional), used for live positions. */

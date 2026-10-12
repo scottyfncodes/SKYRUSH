@@ -58,6 +58,14 @@ export class BriefingScreen extends Screen {
       ),
       h(
         'div',
+        { className: 'briefing__style', dataset: { testid: 'briefing-style' } },
+        h('span', { className: 'eyebrow', text: 'Style' }),
+        h('p', {
+          text: 'Thread gates dead centre, skim low over the terrain, dive through the gold rings and overtake to build your multiplier and refill boost. Missing a gate or touching the ground breaks the combo.',
+        }),
+      ),
+      h(
+        'div',
         { className: 'briefing__facts' },
         fact('Length', `${(circuit.length / 1000).toFixed(1)} km`),
         fact('Gates', String(circuit.gates.length)),
@@ -123,6 +131,7 @@ export const createControlsPanel = (isTouch: boolean): HTMLElement => {
         ['Space', 'Airbrake (hold)'],
         ['X / Ctrl', 'Ease off the throttle (hold)'],
         ['C', 'Recenter camera'],
+        ['M', 'Sound on / off'],
         ['R', 'Restart race'],
         ['Esc / P', 'Pause'],
       ];

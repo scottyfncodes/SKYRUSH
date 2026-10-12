@@ -6,7 +6,8 @@ import {
   type AircraftPart,
   type PartCategory,
 } from '../aircraft/parts';
-import { partStatus, type PlayerProfile } from '../progression/profile';
+import { isLiveryAvailable, partStatus, type PlayerProfile } from '../progression/profile';
+import { getBadge } from '../progression/badges';
 import { performanceForBuild, type PerformanceSummary } from '../aircraft/performance';
 import { withPart, type AircraftBuild } from '../aircraft/build';
 import { formatCredits } from '../core/format';
@@ -177,10 +178,11 @@ export class GarageScreen extends Screen {
     if (this.tab === 'livery') {
       for (const livery of LIVERIES) {
         const installed = profile.build.livery === livery.id;
+        const locked = !isLiveryAvailable(profile, livery.id);
         const card = h(
           'button',
           {
-            className: `part-card${this.selectedId === livery.id ? ' is-selected' : ''}${installed ? ' is-installed' : ''}`,
+            className: `part-card${this.selectedId === livery.id ? ' is-selected' : ''}${installed ? ' is-installed' : ''}${locked ? ' part-card--locked' : ''}`,
             attrs: { type: 'button' },
             dataset: { testid: `part-${livery.id}` },
             on: { click: () => this.select(livery.id) },
@@ -195,7 +197,10 @@ export class GarageScreen extends Screen {
             'span',
             { className: 'part-card__body' },
             h('span', { className: 'part-card__name', text: livery.name }),
-            h('span', { className: 'part-card__meta', text: installed ? 'Applied' : 'Free' }),
+            h('span', {
+              className: 'part-card__meta',
+              text: installed ? 'Applied' : locked ? 'Locked' : livery.badge ? 'Earned' : 'Free',
+            }),
           ),
         );
         this.list.append(card);
@@ -240,21 +245,32 @@ export class GarageScreen extends Screen {
       const livery = LIVERIES.find((l) => l.id === this.selectedId);
       if (!livery) return;
       const applied = profile.build.livery === livery.id;
+      const locked = !isLiveryAvailable(profile, livery.id);
+      const badge = livery.badge ? getBadge(livery.badge) : undefined;
+      const description = badge
+        ? locked
+          ? `Earn the ${badge.name} badge to unlock: ${badge.goal.charAt(0).toLowerCase()}${badge.goal.slice(1)}.`
+          : `Earned with the ${badge.name} badge. Cosmetic only, with a matching contrail.`
+        : 'Factory paint scheme. Liveries are free to apply.';
       this.detail.append(
         h(
           'div',
           { className: 'detail__text' },
           h('h3', { className: 'detail__name', text: livery.name }),
-          h('p', { className: 'detail__desc', text: 'Factory paint scheme. Liveries are free to apply.' }),
+          h('p', { className: 'detail__desc detail__desc--keep', text: description }),
         ),
         h(
           'div',
           { className: 'detail__actions' },
-          button(applied ? 'Applied' : 'Apply', () => this.callbacks.onLivery(livery.id), {
-            variant: 'primary',
-            testId: 'garage-action',
-            disabled: applied,
-          }),
+          button(
+            applied ? 'Applied' : locked ? 'Locked' : 'Apply',
+            () => this.callbacks.onLivery(livery.id),
+            {
+              variant: 'primary',
+              testId: 'garage-action',
+              disabled: applied || locked,
+            },
+          ),
         ),
       );
       return;

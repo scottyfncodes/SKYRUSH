@@ -1,5 +1,5 @@
 import { h } from './dom';
-import { formatRaceTime, formatSpeedKmh, ordinal } from '../core/format';
+import { formatCredits, formatRaceTime, formatSpeedKmh, ordinal } from '../core/format';
 
 export interface HudState {
   position: number;
@@ -18,7 +18,13 @@ export interface HudState {
   /** Screen-space marker for the next gate, or null when behind the camera. */
   marker: { x: number; y: number; onScreen: boolean; angle: number } | null;
   penalties: number;
+  style: { score: number; multiplier: number; comboTime: number; rings: number; ringTotal: number };
 }
+
+export type ToastTone = 'skill' | 'ring' | 'tier' | 'break';
+
+const formatMultiplier = (multiplier: number): string =>
+  `×${Number.isInteger(multiplier) ? multiplier : multiplier.toFixed(1)}`;
 
 export class Hud {
   readonly element: HTMLDivElement;
@@ -39,8 +45,18 @@ export class Hud {
   private readonly message: HTMLDivElement;
   private readonly countdown: HTMLDivElement;
   private readonly status: HTMLDivElement;
+  private readonly styleBox: HTMLDivElement;
+  private readonly styleMultiplier: HTMLSpanElement;
+  private readonly styleScore: HTMLSpanElement;
+  private readonly styleRings: HTMLSpanElement;
+  private readonly comboFill: HTMLDivElement;
+  private readonly toast: HTMLDivElement;
   private messageTimer = 0;
   private messageTimeout: number | null = null;
+  private toastTimeout: number | null = null;
+  private lastMultiplier = 1;
+  private lastScore = -1;
+  private lastRings = -1;
 
   constructor(parent: HTMLElement) {
     this.position = h('span', { className: 'hud-position__value', dataset: { testid: 'hud-position' } });
@@ -75,12 +91,33 @@ export class Hud {
     this.message = h('div', { className: 'hud-message', dataset: { testid: 'hud-message' } });
     this.countdown = h('div', { className: 'hud-countdown', dataset: { testid: 'hud-countdown' } });
     this.status = h('div', { className: 'hud-status', dataset: { testid: 'hud-status' } });
+    this.styleMultiplier = h('span', {
+      className: 'hud-style__mult',
+      text: '×1',
+      dataset: { testid: 'hud-multiplier' },
+    });
+    this.styleScore = h('span', {
+      className: 'hud-style__score',
+      text: '0',
+      dataset: { testid: 'hud-style' },
+    });
+    this.styleRings = h('span', { className: 'hud-style__rings', dataset: { testid: 'hud-rings' } });
+    this.comboFill = h('div', { className: 'hud-style__fill' });
+    this.styleBox = h(
+      'div',
+      { className: 'hud-style', attrs: { 'aria-live': 'off' } },
+      h('div', { className: 'hud-style__row' }, this.styleMultiplier, this.styleScore, this.styleRings),
+      h('div', { className: 'hud-style__track' }, this.comboFill),
+    );
+    this.toast = h('div', { className: 'hud-toast', dataset: { testid: 'hud-toast' } });
 
     this.element = h(
       'div',
       { className: 'hud', dataset: { testid: 'hud' } },
       h('div', { className: 'hud-position' }, this.position, this.progress),
       h('div', { className: 'hud-timer' }, this.timer, this.penalties),
+      this.styleBox,
+      this.toast,
       h('div', { className: 'hud-gate' }, this.gateLabel, this.gateDistance),
       h(
         'div',
@@ -106,7 +143,35 @@ export class Hud {
   hide(): void {
     this.element.hidden = true;
     this.clearMessage();
+    this.clearToast();
     this.countdown.textContent = '';
+  }
+
+  /** One reward line under the combo meter. A newer toast replaces the old one, so they never stack. */
+  showToast(text: string, tone: ToastTone, duration = 1.3): void {
+    this.toast.textContent = text;
+    this.toast.className = `hud-toast hud-toast--${tone}`;
+    void this.toast.offsetWidth; // restart the animation
+    this.toast.classList.add('is-visible');
+    if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
+    this.toastTimeout = window.setTimeout(() => this.clearToast(), duration * 1000);
+  }
+
+  clearToast(): void {
+    this.toast.className = 'hud-toast';
+    if (this.toastTimeout !== null) {
+      window.clearTimeout(this.toastTimeout);
+      this.toastTimeout = null;
+    }
+  }
+
+  /** Resets per-race HUD caches (restart / new race). */
+  resetStyle(): void {
+    this.lastMultiplier = 1;
+    this.lastScore = -1;
+    this.lastRings = -1;
+    this.styleBox.classList.remove('is-pulse', 'is-active');
+    this.clearToast();
   }
 
   setCountdown(text: string): void {
@@ -167,6 +232,28 @@ export class Hud {
     if (this.status.textContent !== statusText) this.status.textContent = statusText;
     this.status.classList.toggle('is-visible', statusText.length > 0);
     this.status.classList.toggle('is-warning', state.overheated || state.stalled);
+
+    const style = state.style;
+    if (style.score !== this.lastScore) {
+      this.lastScore = style.score;
+      this.styleScore.textContent = formatCredits(style.score);
+    }
+    if (style.rings !== this.lastRings) {
+      this.lastRings = style.rings;
+      this.styleRings.textContent = style.ringTotal > 0 ? `◯ ${style.rings}/${style.ringTotal}` : '';
+    }
+    if (style.multiplier !== this.lastMultiplier) {
+      const up = style.multiplier > this.lastMultiplier;
+      this.lastMultiplier = style.multiplier;
+      this.styleMultiplier.textContent = formatMultiplier(style.multiplier);
+      if (up) {
+        this.styleBox.classList.remove('is-pulse');
+        void this.styleBox.offsetWidth;
+        this.styleBox.classList.add('is-pulse');
+      }
+    }
+    this.styleBox.classList.toggle('is-active', style.multiplier > 1);
+    this.comboFill.style.transform = `scaleX(${style.comboTime.toFixed(3)})`;
 
     if (state.marker && state.marker.onScreen) {
       this.marker.style.display = 'flex';
