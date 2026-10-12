@@ -174,7 +174,8 @@ describe('control response', () => {
 
   it('yaw-right input turns the nose to the right (+X)', () => {
     const state = simulate(level(), input({ yaw: 1 }), 2);
-    expect(getForward(state, forward).x).toBeGreaterThan(0.1);
+    // Screen-right is the -X side (the chase camera looks along +Z).
+    expect(getForward(state, forward).x).toBeLessThan(-0.1);
   });
 
   it('self-levels when the stick is centred after a roll', () => {
@@ -430,7 +431,7 @@ describe('robustness', () => {
     const up = getUp(state, new Vector3());
     const right = getRight(state, new Vector3());
     // bank/pitch are sampled before the step's rotation is applied, so allow one step of lag.
-    expect(Math.abs(Math.atan2(-right.y, up.y) - state.bank)).toBeLessThan(0.05);
+    expect(Math.abs(Math.atan2(right.y, up.y) - state.bank)).toBeLessThan(0.05);
     expect(Math.abs(Math.asin(getForward(state, forward).y) - state.pitchAngle)).toBeLessThan(0.05);
   });
 });
@@ -439,7 +440,7 @@ describe('assisted steering', () => {
   const ASSIST = { strength: 0.6 };
   const heading = (state: FlightState): number => {
     forward.set(0, 0, 1).applyQuaternion(state.orientation);
-    return Math.atan2(forward.x, forward.z);
+    return Math.atan2(-forward.x, forward.z); // positive = screen-right (-X)
   };
   const upY = (state: FlightState): number => new Vector3(0, 1, 0).applyQuaternion(state.orientation).y;
   const simulateAssisted = (state: FlightState, controls: FlightInput, seconds: number, strength = 0.6) => {

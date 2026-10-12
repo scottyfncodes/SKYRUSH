@@ -136,6 +136,19 @@ test.describe('SKYRUSH core flow', () => {
     const climbed = await getState(page);
     expect(climbed.race!.y).toBeGreaterThan(start.race!.y + 5);
 
+    // Bank right: the aircraft moves to the right of the opening straight (screen-right is -X).
+    const beforeRight = await getState(page);
+    await holdKeyForSimSeconds(page, 'KeyD', 2);
+    const afterRight = await getState(page);
+    expect(afterRight.race!.x).toBeLessThan(beforeRight.race!.x - 10);
+    // Restart so the left turn also starts from the straight, then bank left.
+    await page.keyboard.press('KeyR');
+    await waitForRacing(page);
+    const beforeLeft = await getState(page);
+    await holdKeyForSimSeconds(page, 'KeyA', 2);
+    const afterLeft = await getState(page);
+    expect(afterLeft.race!.x).toBeGreaterThan(beforeLeft.race!.x + 10);
+
     // Airbrake: speed drops.
     const beforeBrake = await getState(page);
     await holdKeyForSimSeconds(page, 'Space', 1.5);

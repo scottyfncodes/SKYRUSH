@@ -133,6 +133,20 @@ test.describe('responsive layout', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     const after = await page.evaluate(() => window.__skyrushTest!.getState().race!.y);
     expect(after).toBeGreaterThan(before + 5);
+
+    // Stick right banks and turns right: the aircraft drifts toward -X (screen-right).
+    const beforeRight = await getState(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx, y: cy }] });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: cx + box.width * 0.45, y: cy }],
+    });
+    await expect
+      .poll(async () => (await getState(page)).race!.clock, { timeout: 60_000, intervals: [100] })
+      .toBeGreaterThan(beforeRight.race!.clock + 2);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const afterRight = await getState(page);
+    expect(afterRight.race!.x).toBeLessThan(beforeRight.race!.x - 10);
     // Releasing the stick recentres the knob (no stuck input).
     const knobTransform = await stick
       .locator('.touch-stick__knob')
