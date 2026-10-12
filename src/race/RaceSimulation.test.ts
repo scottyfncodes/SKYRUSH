@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Quaternion, Vector3 } from 'three';
+import { Euler, Quaternion, Vector3 } from 'three';
 import { RaceSimulation, type RaceEvent, type Racer, type RacerConfig } from './RaceSimulation';
 import { createCircuit, lookOrientation } from '../course/circuit';
 import type { GateDefinition } from '../course/gates';
@@ -260,6 +260,47 @@ describe('gate ordering', () => {
 });
 
 describe('crash and respawn', () => {
+  it('an aircraft stalled on the ground counts as a crash and respawns instead of getting stuck', () => {
+    const race = soloRace();
+    const player = race.player;
+    // Settle gently onto rising terrain, slow and nose-up: a scrape, not a crash. Before the
+    // grounded check the aircraft then slid along the ground at a crawl, even at full throttle.
+    const position = new Vector3(-911, 0, 1038.1);
+    position.y = circuit.terrain.heightAt(position.x, position.z) + 1.4;
+    const orientation = new Quaternion().setFromEuler(new Euler(0.3, 4.8, 0));
+    player.flight.position.copy(position);
+    player.flight.orientation.copy(orientation);
+    player.flight.velocity.set(0, 0, 1).applyQuaternion(orientation).multiplyScalar(27);
+    player.flight.velocity.y = -1;
+    player.previousPosition.copy(position);
+    const events = run(race, 4, { ...NEUTRAL_INPUT, pitch: 0.4 });
+    expect(events.some((event) => event.type === 'scrape')).toBe(true);
+    expect(events.find((event) => event.type === 'crash')).toEqual({
+      type: 'crash',
+      racerId: 'player',
+      isPlayer: true,
+      penalty: 6,
+    });
+    expect(events.some((event) => event.type === 'respawn')).toBe(true);
+    const ground = circuit.terrain.heightAt(player.flight.position.x, player.flight.position.z);
+    expect(player.flight.position.y - ground).toBeGreaterThan(5);
+  });
+
+  it('a fast scrape bounces off without counting as a crash', () => {
+    const race = soloRace();
+    const player = race.player;
+    const position = new Vector3(300, 0, 300);
+    position.y = circuit.terrain.heightAt(position.x, position.z) + 1.4;
+    player.flight.position.copy(position);
+    player.flight.orientation.identity();
+    player.flight.velocity.set(0, -1, 80);
+    player.flight.speed = 80;
+    player.previousPosition.copy(position);
+    const events = run(race, 0.5, { ...NEUTRAL_INPUT, pitch: 0.4 });
+    expect(events.some((event) => event.type === 'scrape')).toBe(true);
+    expect(events.some((event) => event.type === 'crash')).toBe(false);
+  });
+
   it('a crash applies a penalty, starts the respawn timer, then respawns above terrain', () => {
     const race = soloRace();
     const player = race.player;
