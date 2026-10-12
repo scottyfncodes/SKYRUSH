@@ -254,6 +254,10 @@ export interface Livery {
   accent: number;
   secondary: number;
   canopy: number;
+  /** Contrail tint; defaults to a warm white. */
+  trail?: number;
+  /** Badge that unlocks this livery. Factory liveries have none and are always available. */
+  badge?: string;
 }
 
 export const LIVERIES: readonly Livery[] = [
@@ -288,6 +292,47 @@ export const LIVERIES: readonly Livery[] = [
     accent: 0xe8332a,
     secondary: 0x22262e,
     canopy: 0x1a2f3e,
+  },
+  // Earned liveries: each is unlocked by a skill badge (see progression/badges.ts).
+  {
+    id: 'livery-aurora',
+    name: 'Aurora Ring',
+    base: 0x10233f,
+    accent: 0x3cf0c4,
+    secondary: 0xb48cff,
+    canopy: 0x0c1c30,
+    trail: 0x8ff7de,
+    badge: 'ring-runner',
+  },
+  {
+    id: 'livery-solar',
+    name: 'Solar Bullseye',
+    base: 0xfff4dc,
+    accent: 0xffb21f,
+    secondary: 0xd2361c,
+    canopy: 0x2a1a10,
+    trail: 0xffd98a,
+    badge: 'bullseye',
+  },
+  {
+    id: 'livery-dune',
+    name: 'Canyon Skimmer',
+    base: 0xc98a4b,
+    accent: 0x1f2a36,
+    secondary: 0xf2e2c4,
+    canopy: 0x18262f,
+    trail: 0xf6d7a8,
+    badge: 'canyon-skimmer',
+  },
+  {
+    id: 'livery-neon',
+    name: 'Neon Rush',
+    base: 0x14102a,
+    accent: 0xff3fb4,
+    secondary: 0x36d6ff,
+    canopy: 0x1a0f2e,
+    trail: 0xff9ad8,
+    badge: 'combo-king',
   },
 ];
 

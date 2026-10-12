@@ -53,9 +53,14 @@ describe('save/load round trip', () => {
           credits: 1000,
           date: '2026-01-02T03:04:05.000Z',
           build: { ...DEFAULT_BUILD },
+          style: 6400,
         },
       ],
-      settings: { assist: 0.3, invertPitch: true, audio: false, sensitivity: 1.2 },
+      settings: { assist: 0.3, invertPitch: true, audio: false, sensitivity: 1.2, haptics: false },
+      bestStyle: 6400,
+      bestMultiplier: 2.5,
+      badges: ['ring-runner'],
+      badgeProgress: { 'ring-runner': 1, bullseye: 0.5 },
     };
     expect(saveProfile(storage, profile)).toBe(true);
     expect(storage.getItem(SAVE_KEY)).not.toBeNull();
@@ -173,6 +178,7 @@ describe('sanitiseProfile', () => {
       credits: 1000,
       date: '2026-01-02T03:04:05.000Z',
       build: { ...DEFAULT_BUILD },
+      style: 0,
     };
     const profile = sanitiseProfile({
       history: [
@@ -197,6 +203,7 @@ describe('sanitiseProfile', () => {
       credits: 0,
       date: new Date(0).toISOString(),
       build: DEFAULT_BUILD,
+      style: 0,
     });
 
     const many = sanitiseProfile({ history: Array.from({ length: MAX_HISTORY + 5 }, () => valid) });
@@ -206,11 +213,23 @@ describe('sanitiseProfile', () => {
 
   it('clamps settings into range and fills defaults', () => {
     const high = sanitiseProfile({ settings: { assist: 3, sensitivity: 4, invertPitch: 'yes', audio: 0 } });
-    expect(high.settings).toEqual({ assist: 1, sensitivity: 1.5, invertPitch: false, audio: true });
+    expect(high.settings).toEqual({
+      assist: 1,
+      sensitivity: 1.5,
+      invertPitch: false,
+      audio: true,
+      haptics: true,
+    });
     const low = sanitiseProfile({
       settings: { assist: -2, sensitivity: 0.1, invertPitch: true, audio: false },
     });
-    expect(low.settings).toEqual({ assist: 0, sensitivity: 0.5, invertPitch: true, audio: false });
+    expect(low.settings).toEqual({
+      assist: 0,
+      sensitivity: 0.5,
+      invertPitch: true,
+      audio: false,
+      haptics: true,
+    });
     expect(sanitiseProfile({ settings: 'nope' }).settings).toEqual(defaults.settings);
   });
 
