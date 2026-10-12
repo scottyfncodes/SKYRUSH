@@ -52,3 +52,42 @@ export const testGateCrossing = (
 /** Signed distance ahead of (positive) or behind (negative) the gate plane. */
 export const distanceAlongGate = (gate: GateDefinition, point: Vector3): number =>
   _currRel.subVectors(point, gate.position).dot(gate.normal);
+
+/**
+ * Normalised position at which prev→curr crossed the gate plane: 0 at the
+ * centre, 1 on the frame (elliptical, so the corners count as edges).
+ * Returns null when the segment did not cross the plane in the intended direction.
+ */
+export const gateCrossingOffset = (gate: GateDefinition, prev: Vector3, curr: Vector3): number | null => {
+  _prevRel.subVectors(prev, gate.position);
+  _currRel.subVectors(curr, gate.position);
+  const dPrev = _prevRel.dot(gate.normal);
+  const dCurr = _currRel.dot(gate.normal);
+  if (!(dPrev < 0 && dCurr >= 0)) return null;
+  const t = dPrev / (dPrev - dCurr);
+  _point.copy(_prevRel).lerp(_currRel, t);
+  const lateral = _point.dot(gate.right) / gate.halfWidth;
+  const vertical = _point.y / gate.halfHeight;
+  return Math.hypot(lateral, vertical);
+};
+
+export interface BonusRing {
+  index: number;
+  position: Vector3;
+  /** Unit vector, the direction the ring is meant to be flown through. */
+  normal: Vector3;
+  /** Collection radius in metres (slightly larger than the visible ring). */
+  radius: number;
+}
+
+/** True when prev→curr passed through the ring in its intended direction. */
+export const testRingCrossing = (ring: BonusRing, prev: Vector3, curr: Vector3): boolean => {
+  _prevRel.subVectors(prev, ring.position);
+  _currRel.subVectors(curr, ring.position);
+  const dPrev = _prevRel.dot(ring.normal);
+  const dCurr = _currRel.dot(ring.normal);
+  if (!(dPrev < 0 && dCurr >= 0)) return false;
+  const t = dPrev / (dPrev - dCurr);
+  _point.copy(_prevRel).lerp(_currRel, t);
+  return _point.length() <= ring.radius;
+};
