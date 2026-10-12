@@ -77,6 +77,13 @@ export const DEFAULT_ASSIST: FlightAssist = { strength: 0.6 };
 export const OVERHEAT_CLEAR_THRESHOLD = 0.7;
 const OVERHEAT_THRUST_FACTOR = 0.55;
 const CONTACT_HEIGHT = 1.5;
+/** Assisted steering: roll input commands a bank angle up to this limit (≈72°). */
+export const MAX_ASSISTED_BANK = 1.25;
+/** Assisted steering: heading change per second at full bank. */
+const ASSISTED_TURN_RATE = 1.15;
+/** Assisted steering: the nose is kept within this pitch angle (≈57°) so the aircraft never loops. */
+const ASSISTED_PITCH_LIMIT = 1.0;
+const _worldYaw = new Quaternion();
 
 const _forward = new Vector3();
 const _up = new Vector3();
@@ -222,23 +229,44 @@ export const stepFlight = (
   const aoaPenalty = 1 - 0.5 * smoothstep(0.35, 1.1, state.angleOfAttack);
 
   const stability = params.stability * (0.35 + 0.65 * assistStrength);
+  const assisted = assistStrength > 0.05;
   let pitchTarget = input.pitch * params.pitchRate * authority * aoaPenalty;
-  let rollTarget = input.roll * params.rollRate * authority * aoaPenalty;
+  let rollTarget: number;
   let yawTarget = input.yaw * params.yawRate * authority;
+  let headingRate = 0;
 
   // Stall: the nose drops until airspeed recovers.
   pitchTarget -= (1 - lowSpeedAuthority) * 0.7;
 
-  // Turn assistance: a banked aircraft gently yaws into the turn and holds a little pitch.
   const bankSin = Math.sin(state.bank);
-  yawTarget += bankSin * Math.abs(Math.cos(state.bank)) * 0.9 * authority * (0.4 + 0.6 * assistStrength);
-  pitchTarget += Math.abs(bankSin) * 0.25 * authority * assistStrength;
-
-  // Stability assistance: self-level when the stick is centred.
-  if (Math.abs(input.roll) < 0.05) {
-    const level = clamp(-state.bank * 1.8 * stability, -params.rollRate * 0.6, params.rollRate * 0.6);
-    rollTarget += level * authority;
+  if (assisted) {
+    // Assisted steering: the stick commands a bank angle, never a continuous roll,
+    // so the aircraft cannot be rolled inverted by holding left or right. A banked
+    // aircraft turns on its own (coordinated turn about the world up axis).
+    const desiredBank = input.roll * MAX_ASSISTED_BANK;
+    rollTarget =
+      clamp((desiredBank - state.bank) * 3.2 * (0.6 + 0.4 * stability), -params.rollRate, params.rollRate) *
+      authority *
+      aoaPenalty;
+    const speedFactor = clamp(80 / Math.max(speed, 20), 0.6, 1.15);
+    headingRate = bankSin * ASSISTED_TURN_RATE * speedFactor * authority;
+    // Soft pitch limit: the nose can always come back toward level but not past the limit.
+    const headroomUp = (ASSISTED_PITCH_LIMIT - state.pitchAngle) * 4;
+    const headroomDown = (ASSISTED_PITCH_LIMIT + state.pitchAngle) * 4;
+    pitchTarget = clamp(pitchTarget, -headroomDown, headroomUp);
+    // A little nose-up while banked keeps the turn level without hauling on the stick.
+    pitchTarget += Math.abs(bankSin) * 0.12 * authority;
+  } else {
+    // Direct control: roll input commands a roll rate and only a mild coordinated yaw helps.
+    rollTarget = input.roll * params.rollRate * authority * aoaPenalty;
+    yawTarget += bankSin * Math.abs(Math.cos(state.bank)) * 0.5 * authority;
+    if (Math.abs(input.roll) < 0.05) {
+      const level = clamp(-state.bank * 1.8 * stability, -params.rollRate * 0.6, params.rollRate * 0.6);
+      rollTarget += level * authority;
+    }
   }
+
+  // Stability assistance: settle the nose toward level when the stick is centred.
   if (Math.abs(input.pitch) < 0.05) {
     const targetPitch = 0.03; // slight nose-up bias keeps cruise level despite tiny sink.
     const level = clamp((targetPitch - state.pitchAngle) * 1.2 * stability, -0.5, 0.5);
@@ -257,6 +285,11 @@ export const stepFlight = (
   state.orientation.multiply(_dq);
   _dq.setFromAxisAngle(_axis.set(0, 0, 1), -state.rates.z * dt);
   state.orientation.multiply(_dq);
+  if (headingRate !== 0) {
+    // Heading change about the world up axis keeps bank and pitch intact.
+    _worldYaw.setFromAxisAngle(_axis.set(0, 1, 0), headingRate * dt);
+    state.orientation.premultiply(_worldYaw);
+  }
   state.orientation.normalize();
   getForward(state, _forward);
   getUp(state, _up);
@@ -273,6 +306,11 @@ export const stepFlight = (
   _accel.set(0, -GRAVITY, 0);
   _accel.addScaledVector(_forward, thrust / params.mass);
   _accel.addScaledVector(_up, GRAVITY * liftFraction);
+  if (assisted) {
+    // Assisted turns are altitude-neutral: restore the vertical lift lost to bank.
+    const lost = GRAVITY * liftFraction * (1 - Math.max(0, _up.y));
+    _accel.y += lost * assistStrength;
+  }
   if (speed > 0.01) {
     _dir.copy(state.velocity).divideScalar(speed);
     _accel.addScaledVector(_dir, -drag / params.mass);

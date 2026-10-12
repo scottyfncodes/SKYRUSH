@@ -156,14 +156,15 @@ describe('computeAiInput', () => {
 });
 
 describe('computeCruiseInput', () => {
-  it('climbs when below the safe altitude and levels the wings', () => {
+  it('climbs when below the safe altitude and lets assisted steering level the wings', () => {
     const ground = circuit.terrain.heightAt(0, 0);
     const state = createFlightState(new Vector3(0, ground + 20, 0), new Quaternion(), 60);
     state.bank = 0.5;
     const out: FlightInput = { ...NEUTRAL_INPUT };
     computeCruiseInput(state, circuit, out);
     expect(out.pitch).toBeGreaterThan(0);
-    expect(out.roll).toBeLessThan(0);
+    // Under assisted steering a zero roll command is a "wings level" command.
+    expect(out.roll).toBe(0);
     expect(out.boost).toBe(false);
     expect(out.airbrake).toBe(false);
     expect(out.yaw).toBe(0);

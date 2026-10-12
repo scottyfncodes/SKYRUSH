@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { clamp, clamp01, wrapAngle } from '../core/math';
 import type { AircraftBuild } from '../aircraft/build';
 import type { FlightParameters } from '../aircraft/performance';
-import type { FlightInput, FlightState } from '../flight/FlightModel';
+import { MAX_ASSISTED_BANK, type FlightInput, type FlightState } from '../flight/FlightModel';
 import type { Circuit } from '../course/circuit';
 
 export type AiStyle = 'precision' | 'aggressive' | 'speed';
@@ -171,13 +171,14 @@ export const computeAiInput = (
   const gain = personality.gain;
   const desiredBank =
     clamp(yawError * 2.2 * gain, -personality.maxBank, personality.maxBank) * (1 - terrainPanic);
-  const roll = clamp((desiredBank - state.bank) * 1.6 * gain, -1, 1);
+  // AI pilots fly with assisted steering, where roll input is a bank-angle command.
+  const roll = clamp(desiredBank / MAX_ASSISTED_BANK, -1, 1);
 
   // Pull into the turn while banked, plus a vertical correction.
   _inverse.copy(state.orientation).invert();
   _local.copy(_toTarget).applyQuaternion(_inverse);
   const verticalCorrection = (desiredPitch - state.pitchAngle) * 2.4 * gain;
-  const turnPull = Math.abs(Math.sin(state.bank)) * clamp01(Math.abs(yawError) * 2.5) * 0.9;
+  const turnPull = Math.abs(Math.sin(state.bank)) * clamp01(Math.abs(yawError) * 2.5) * 0.35;
   let pitch = clamp(verticalCorrection + turnPull + _local.y * 0.8, -0.6, 1);
   if (terrainPanic > 0) pitch = Math.max(pitch, 0.5 + terrainPanic * 0.5);
   const yaw = clamp(yawError * 1.2 * gain, -1, 1);
@@ -253,7 +254,7 @@ export const computeCruiseInput = (state: FlightState, circuit: Circuit, out: Fl
   const altitudeError = targetAltitude - state.position.y;
   const desiredPitch = clamp(altitudeError / 200, -0.15, 0.45);
   out.pitch = clamp((desiredPitch - state.pitchAngle) * 2.5, -0.6, 1);
-  out.roll = clamp(-state.bank * 1.5, -1, 1);
+  out.roll = 0; // assisted steering levels the wings on its own
   out.yaw = 0;
   out.throttle = 0.6;
   out.boost = false;

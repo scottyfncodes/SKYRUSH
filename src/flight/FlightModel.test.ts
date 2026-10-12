@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
 import {
+  MAX_ASSISTED_BANK,
   NEUTRAL_INPUT,
   OVERHEAT_CLEAR_THRESHOLD,
   copyFlightState,
@@ -431,5 +432,86 @@ describe('robustness', () => {
     // bank/pitch are sampled before the step's rotation is applied, so allow one step of lag.
     expect(Math.abs(Math.atan2(-right.y, up.y) - state.bank)).toBeLessThan(0.05);
     expect(Math.abs(Math.asin(getForward(state, forward).y) - state.pitchAngle)).toBeLessThan(0.05);
+  });
+});
+
+describe('assisted steering', () => {
+  const ASSIST = { strength: 0.6 };
+  const heading = (state: FlightState): number => {
+    forward.set(0, 0, 1).applyQuaternion(state.orientation);
+    return Math.atan2(forward.x, forward.z);
+  };
+  const upY = (state: FlightState): number => new Vector3(0, 1, 0).applyQuaternion(state.orientation).y;
+  const simulateAssisted = (state: FlightState, controls: FlightInput, seconds: number, strength = 0.6) => {
+    let minUpY = 1;
+    let maxBank = 0;
+    let maxPitch = 0;
+    const steps = Math.round(seconds / DT);
+    for (let i = 0; i < steps; i += 1) {
+      stepFlight(state, controls, DEFAULT_PARAMS, FLAT, DT, { strength });
+      minUpY = Math.min(minUpY, upY(state));
+      maxBank = Math.max(maxBank, Math.abs(state.bank));
+      maxPitch = Math.max(maxPitch, Math.abs(state.pitchAngle));
+    }
+    return { minUpY, maxBank, maxPitch };
+  };
+
+  it('holding roll right banks right up to the limit and never inverts', () => {
+    const state = level(90);
+    const { minUpY, maxBank } = simulateAssisted(state, input({ roll: 1 }), 4);
+    expect(state.bank).toBeGreaterThan(MAX_ASSISTED_BANK - 0.05);
+    expect(maxBank).toBeLessThan(MAX_ASSISTED_BANK + 0.05);
+    expect(minUpY).toBeGreaterThan(0.2);
+  });
+
+  it('a right bank turns right and a left bank turns left', () => {
+    const right = level(90);
+    simulateAssisted(right, input({ roll: 1 }), 1);
+    expect(heading(right)).toBeGreaterThan(0.2);
+    const left = level(90);
+    simulateAssisted(left, input({ roll: -1 }), 1);
+    expect(heading(left)).toBeLessThan(-0.2);
+    expect(heading(left)).toBeCloseTo(-heading(right), 1);
+  });
+
+  it('half stick gives roughly half the bank', () => {
+    const state = level(90);
+    simulateAssisted(state, input({ roll: 0.5 }), 4);
+    expect(state.bank).toBeGreaterThan(MAX_ASSISTED_BANK * 0.4);
+    expect(state.bank).toBeLessThan(MAX_ASSISTED_BANK * 0.6);
+  });
+
+  it('releasing the stick levels the wings', () => {
+    const state = level(90);
+    simulateAssisted(state, input({ roll: 1 }), 2);
+    simulateAssisted(state, input(), 3);
+    expect(Math.abs(state.bank)).toBeLessThan(0.08);
+  });
+
+  it('a sustained banked turn holds altitude within a small band', () => {
+    const state = level(90, 300);
+    simulateAssisted(state, input({ roll: 0.8 }), 5, ASSIST.strength);
+    expect(Math.abs(state.position.y - 300)).toBeLessThan(60);
+  });
+
+  it('pulling up for a long time never loops the aircraft', () => {
+    const state = level(90);
+    const { maxPitch, minUpY } = simulateAssisted(state, input({ pitch: 1 }), 8);
+    expect(maxPitch).toBeLessThan(1.1);
+    expect(minUpY).toBeGreaterThan(0.3);
+    expect(state.position.y).toBeGreaterThan(300);
+  });
+
+  it('pushing down is limited symmetrically', () => {
+    const state = level(90, 2000);
+    const { maxPitch } = simulateAssisted(state, input({ pitch: -1 }), 4);
+    expect(maxPitch).toBeLessThan(1.1);
+    expect(state.pitchAngle).toBeLessThan(-0.8);
+  });
+
+  it('with assistance off, roll is a rate and the aircraft can roll inverted', () => {
+    const state = level(90);
+    const { minUpY } = simulateAssisted(state, input({ roll: 1 }), 3, 0);
+    expect(minUpY).toBeLessThan(-0.5);
   });
 });

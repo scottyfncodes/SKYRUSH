@@ -76,6 +76,10 @@ export const createSettingsPanel = (
       assist,
       assistValue,
     ),
+    h('p', {
+      className: 'setting__hint',
+      text: 'Above 0%, left and right set a bank angle and the aircraft turns itself; the nose cannot loop. At 0% every axis is a raw rotation rate.',
+    }),
     h(
       'label',
       { className: 'setting' },
