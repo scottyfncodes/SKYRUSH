@@ -139,9 +139,13 @@ export class KeyboardInput {
       this.axis(this.bindings.pitchDown, this.bindings.pitchUp) * (options.invertPitch ? -1 : 1);
     const rollTarget = this.axis(this.bindings.rollLeft, this.bindings.rollRight);
     const yawTarget = this.axis(this.bindings.yawLeft, this.bindings.yawRight);
-    this.pitch = moveToward(this.pitch, pitchTarget, (pitchTarget === 0 ? release : rate) * dt);
-    this.roll = moveToward(this.roll, rollTarget, (rollTarget === 0 ? release : rate) * dt);
-    this.yaw = moveToward(this.yaw, yawTarget, (yawTarget === 0 ? release : rate) * dt);
+    // Releasing, or reversing back through centre, uses the faster release rate so a
+    // direction change is not slowed by the ramp that softens taps.
+    const step = (current: number, target: number): number =>
+      moveToward(current, target, (target === 0 || current * target < 0 ? release : rate) * dt);
+    this.pitch = step(this.pitch, pitchTarget);
+    this.roll = step(this.roll, rollTarget);
+    this.yaw = step(this.yaw, yawTarget);
     const throttleDown = this.bindings.throttleDown.some((code) => this.pressed.has(code));
     this.throttle = moveToward(this.throttle, throttleDown ? 0.2 : 1, 1.5 * dt);
 

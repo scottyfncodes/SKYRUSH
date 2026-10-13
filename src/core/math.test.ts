@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDeadzone,
+  applyExpo,
   clamp,
   clamp01,
   damp,
@@ -52,6 +53,22 @@ describe('math helpers', () => {
     expect(applyDeadzone(1, 0.2)).toBeCloseTo(1, 12);
     expect(applyDeadzone(-1, 0.2)).toBeCloseTo(-1, 12);
     expect(applyDeadzone(0.6, 0.2)).toBeCloseTo(0.5, 12);
+  });
+
+  it('applyExpo softens small deflections but keeps the full range', () => {
+    expect(applyExpo(0, 0.35)).toBe(0);
+    expect(applyExpo(1, 0.35)).toBeCloseTo(1, 12);
+    expect(applyExpo(-1, 0.35)).toBeCloseTo(-1, 12);
+    expect(applyExpo(0.2, 0.35)).toBeCloseTo(0.144, 12);
+    expect(applyExpo(-0.2, 0.35)).toBeCloseTo(-0.144, 12);
+    expect(applyExpo(0.5, 0)).toBeCloseTo(0.5, 12);
+    // Monotonic, so pushing further always means more.
+    let previous = 0;
+    for (let x = 0.05; x <= 1; x += 0.05) {
+      const y = applyExpo(x, 0.35);
+      expect(y).toBeGreaterThan(previous);
+      previous = y;
+    }
   });
 
   it('roundTo rounds to the requested decimals', () => {

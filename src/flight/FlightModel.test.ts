@@ -510,6 +510,101 @@ describe('assisted steering', () => {
     expect(state.pitchAngle).toBeLessThan(-0.8);
   });
 
+  describe('bank response tuning', () => {
+    const FUSELAGES = ['fuselage-needle', 'fuselage-allrounder', 'fuselage-heavy'] as const;
+    const paramsFor = (fuselage: string) =>
+      flightParametersForBuild(withPart(DEFAULT_BUILD, 'fuselage', fuselage));
+    const HEAVY_PARAMS = paramsFor('fuselage-heavy');
+    /** Runs assisted flight, calling `each` with the state and elapsed time after every step. */
+    const fly = (
+      state: FlightState,
+      controls: FlightInput,
+      seconds: number,
+      params: FlightParameters,
+      each: (s: FlightState, t: number) => void = () => undefined,
+      dt = DT,
+    ): void => {
+      const steps = Math.round(seconds / dt);
+      for (let i = 0; i < steps; i += 1) {
+        stepFlight(state, controls, params, FLAT, dt, ASSIST);
+        each(state, (i + 1) * dt);
+      }
+    };
+    const timeToHalfBank = (params: FlightParameters, dt = DT): number => {
+      let reached = Infinity;
+      fly(
+        level(90, 2000),
+        input({ roll: 1 }),
+        1.5,
+        params,
+        (s, t) => {
+          if (reached === Infinity && s.bank > MAX_ASSISTED_BANK / 2) reached = t;
+        },
+        dt,
+      );
+      return reached;
+    };
+
+    it('turn-in stays quick: half of full bank in under half a second on the default build', () => {
+      expect(timeToHalfBank(DEFAULT_PARAMS)).toBeLessThan(0.45);
+    });
+
+    it('full stick settles on the bank limit without overshoot on every fuselage', () => {
+      for (const fuselage of FUSELAGES) {
+        let peak = 0;
+        fly(level(90, 2000), input({ roll: 1 }), 3, paramsFor(fuselage), (s) => {
+          peak = Math.max(peak, s.bank);
+        });
+        expect(peak, fuselage).toBeLessThan(MAX_ASSISTED_BANK * 1.01);
+      }
+    });
+
+    it('releasing a hard turn levels the wings promptly without swinging through level', () => {
+      for (const fuselage of FUSELAGES) {
+        const params = paramsFor(fuselage);
+        const state = level(90, 2000);
+        fly(state, input({ roll: 1 }), 2, params);
+        let swing = 0;
+        let settled = Infinity;
+        fly(state, input(), 2, params, (s, t) => {
+          swing = Math.max(swing, -s.bank);
+          if (Math.abs(s.bank) > 0.05) settled = Infinity;
+          else if (settled === Infinity) settled = t;
+        });
+        expect(swing, fuselage).toBeLessThan(0.03);
+        expect(settled, fuselage).toBeLessThan(0.9);
+      }
+    });
+
+    it('stops turning soon after the stick is released', () => {
+      const state = level(90, 2000);
+      fly(state, input({ roll: 1 }), 2, DEFAULT_PARAMS);
+      const before = heading(state);
+      fly(state, input(), 3, DEFAULT_PARAMS);
+      // Residual heading change while the wings come back to level.
+      expect(Math.abs(heading(state) - before)).toBeLessThan(0.4);
+    });
+
+    it('a full reversal settles on the opposite bank without wobble, even on the heavy frame', () => {
+      const state = level(90, 2000);
+      fly(state, input({ roll: 1 }), 2, HEAVY_PARAMS);
+      let peak = 0;
+      let lastOutside = 0;
+      fly(state, input({ roll: -1 }), 3, HEAVY_PARAMS, (s, t) => {
+        peak = Math.max(peak, -s.bank);
+        if (Math.abs(s.bank + MAX_ASSISTED_BANK) > 0.05) lastOutside = t;
+      });
+      expect(peak).toBeLessThan(MAX_ASSISTED_BANK * 1.02);
+      expect(lastOutside).toBeLessThan(1.6);
+    });
+
+    it('bank response is consistent across simulation step sizes', () => {
+      const fine = timeToHalfBank(DEFAULT_PARAMS, 1 / 120);
+      const coarse = timeToHalfBank(DEFAULT_PARAMS, 1 / 30);
+      expect(Math.abs(fine - coarse)).toBeLessThan(0.05);
+    });
+  });
+
   it('with assistance off, roll is a rate and the aircraft can roll inverted', () => {
     const state = level(90);
     const { minUpY } = simulateAssisted(state, input({ roll: 1 }), 3, 0);
