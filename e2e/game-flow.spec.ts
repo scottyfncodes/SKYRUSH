@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import {
   collectErrors,
   tap,
@@ -269,6 +269,49 @@ test.describe('SKYRUSH core flow', () => {
     expect(again.screen).toBe('race');
     expect(again.race!.phase).toBe('countdown');
     expect(again.race!.style.score).toBe(0);
+  });
+
+  test('picks a course from the menu and the briefing, races it, and remembers the choice', async ({
+    page,
+    isMobile,
+  }) => {
+    // Two races (each with a countdown) under software WebGL need more than the default 60 s.
+    test.slow();
+    const errors = collectErrors(page);
+    // Real touch taps on the phone profile, mouse clicks on desktop.
+    const press = (locator: Locator) => (isMobile ? tap(page, locator) : locator.click());
+    await seedProfile(page, { racesCompleted: 3 });
+    await openGame(page);
+    const current = page.getByTestId('course-current');
+    await expect(current).toHaveAttribute('data-course', 'caldera-ridge');
+    await press(page.getByTestId('course-next'));
+    await expect(current).toHaveAttribute('data-course', 'frostline-pass');
+    await expect(current).toContainText('Frostline Pass');
+    await expect(page.getByTestId('menu-footer')).toContainText('Frostline Pass');
+
+    await page.getByTestId('menu-race').click();
+    await waitForRacing(page);
+    const race = await getState(page);
+    expect(race.race!.circuitId).toBe('frostline-pass');
+    expect(race.race!.y).toBeGreaterThan(80); // the alpine start sits 40 m up the valley
+
+    // The choice is saved: after a reload the menu still offers Frostline Pass.
+    await page.reload();
+    await expect(page.getByTestId('main-menu')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('course-current')).toHaveAttribute('data-course', 'frostline-pass');
+
+    // The briefing lists every course; choosing one there updates the briefing.
+    await page.getByTestId('menu-garage').click();
+    await page.getByTestId('garage-race').click();
+    await expect(page.getByTestId('briefing')).toBeVisible();
+    await expect(page.getByTestId('course-grid').locator('.course-card')).toHaveCount(4);
+    await press(page.getByTestId('course-coral-coast'));
+    await expect(page.getByTestId('course-coral-coast')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.briefing__title')).toHaveText('Coral Coast');
+    await page.getByTestId('briefing-start').click();
+    await waitForRacing(page);
+    expect((await getState(page)).race!.circuitId).toBe('coral-coast');
+    expect(errors).toEqual([]);
   });
 
   test('recovers from malformed saved data', async ({ page }) => {

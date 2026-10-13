@@ -15,6 +15,7 @@ import { loadProfile, resolveStorage, saveProfile, type StorageLike } from '../p
 import {
   installPart,
   purchasePart,
+  selectCircuit,
   setLivery,
   updateSettings,
   type PlayerProfile,
@@ -42,9 +43,11 @@ export type AppScreen =
 export interface TestHarness {
   getState: () => {
     screen: AppScreen;
+    selectedCircuit: string;
     credits: number;
     build: AircraftBuild;
     race: null | {
+      circuitId: string;
       phase: string;
       clock: number;
       nextGate: number;
@@ -83,7 +86,7 @@ export class App {
   private screen: AppScreen = 'loading';
   private profile: PlayerProfile;
   private readonly storage: StorageLike;
-  private readonly circuit: Circuit;
+  private readonly circuits = new Map<string, Circuit>();
   private renderer!: Renderer;
   private garageStage!: GarageStage;
   private raceStage: RaceStage | null = null;
@@ -111,7 +114,6 @@ export class App {
   ) {
     this.storage = resolveStorage();
     this.profile = loadProfile(this.storage).profile;
-    this.circuit = createCircuit();
     this.isTouch = isCoarsePointer();
 
     this.canvas = h('canvas', { id: 'game-canvas', attrs: { 'aria-label': 'SKYRUSH game view' } });
@@ -128,6 +130,7 @@ export class App {
 
     this.menu = new MainMenuScreen({
       onRace: () => this.quickRace(),
+      onSelectCourse: (courseId) => this.selectCourse(courseId),
       onGarage: () => this.goGarage(),
       onControls: () => this.goSettings(),
     });
@@ -144,6 +147,7 @@ export class App {
         onStart: () => this.startRace(),
         onBack: () => this.goGarage(),
         onSettings: (patch) => this.changeSettings(patch),
+        onSelectCourse: (courseId) => this.selectCourse(courseId),
       },
       this.isTouch,
     );
@@ -230,7 +234,9 @@ export class App {
       return false;
     }
     try {
-      this.renderer = new Renderer(this.canvas);
+      // ?quality=high|low overrides the automatic choice (low only without a GPU).
+      const quality = new URLSearchParams(window.location.search).get('quality');
+      this.renderer = new Renderer(this.canvas, quality === 'high' || quality === 'low' ? { quality } : {});
     } catch (error) {
       console.error(error);
       this.fail(
@@ -295,6 +301,27 @@ export class App {
     if (inRace) this.hud.show();
     else if (screen !== 'paused' && screen !== 'results') this.hud.hide();
     this.garageStage.interactive = screen === 'menu' || screen === 'garage';
+  }
+
+  /** The selected course (built once per course and cached). */
+  private get circuit(): Circuit {
+    const id = this.profile.selectedCircuit;
+    let circuit = this.circuits.get(id);
+    if (!circuit) {
+      circuit = createCircuit(id);
+      this.circuits.set(id, circuit);
+    }
+    return circuit;
+  }
+
+  private selectCourse(courseId: string): void {
+    const next = selectCircuit(this.profile, courseId);
+    if (next === this.profile) return;
+    this.profile = next;
+    this.persist();
+    this.audio.uiClick();
+    if (this.screen === 'menu') this.menu.update(this.profile);
+    else if (this.screen === 'briefing') this.briefing.update(this.circuit, this.profile);
   }
 
   private persist(): void {
@@ -448,6 +475,8 @@ export class App {
   private finishRace(standings: Standing[]): void {
     const player = standings.find((s) => s.isPlayer);
     if (!player || !this.raceStage) return;
+    // Score against the course actually raced, never whatever is selected now.
+    const circuit = this.raceStage.sim.circuit;
     const tracker = this.raceStage.sim.style;
     const style: RunStyleStats = {
       score: tracker.score,
@@ -455,11 +484,11 @@ export class App {
       perfectGates: tracker.perfectGates,
       nearMisses: tracker.nearMisses,
       rings: tracker.rings,
-      ringTotal: this.circuit.rings.length,
+      ringTotal: circuit.rings.length,
       overtakes: tracker.overtakes,
     };
     const applied = applyRaceOutcome(this.profile, {
-      circuitId: this.circuit.id,
+      circuitId: circuit.id,
       position: player.position,
       racerCount: standings.length,
       finishTime: player.finishTime,
@@ -467,7 +496,7 @@ export class App {
       missedGates: player.missedGates,
       crashes: player.crashes,
       penaltySeconds: player.penaltySeconds,
-      parTime: this.circuit.parTime,
+      parTime: circuit.parTime,
       build: this.profile.build,
       style,
     });
@@ -480,7 +509,7 @@ export class App {
       applied,
       credits: this.profile.credits,
       style,
-      gateCount: this.circuit.gates.length,
+      gateCount: circuit.gates.length,
     });
     this.results.show();
     if (applied.newBestTime || applied.badges.length > 0) this.audio.personalBest();
@@ -505,11 +534,13 @@ export class App {
         const player = stage?.player;
         return {
           screen: this.screen,
+          selectedCircuit: this.profile.selectedCircuit,
           credits: this.profile.credits,
           build: { ...this.profile.build },
           race:
             stage && player
               ? {
+                  circuitId: stage.sim.circuit.id,
                   phase: stage.sim.phase,
                   clock: stage.sim.clock,
                   nextGate: player.nextGate,

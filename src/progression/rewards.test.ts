@@ -181,3 +181,22 @@ describe('applyRaceOutcome', () => {
     expect(win.unlocked.map((part) => part.id).sort()).toEqual(['engine-pulse', 'engine-twin']);
   });
 });
+
+describe('per-course best times', () => {
+  it('tracks a best time per course and only updates the legacy best on Caldera Ridge', () => {
+    const start = createDefaultProfile();
+    const coral = applyRaceOutcome(start, outcome({ circuitId: 'coral-coast', finishTime: 101 }));
+    expect(coral.newBestTime).toBe(true);
+    expect(coral.profile.bestTimes).toEqual({ 'coral-coast': 101 });
+    expect(coral.profile.bestTime).toBeNull();
+
+    const caldera = applyRaceOutcome(coral.profile, outcome({ circuitId: 'caldera-ridge', finishTime: 104 }));
+    expect(caldera.newBestTime).toBe(true);
+    expect(caldera.profile.bestTimes).toEqual({ 'coral-coast': 101, 'caldera-ridge': 104 });
+    expect(caldera.profile.bestTime).toBe(104);
+
+    const slower = applyRaceOutcome(caldera.profile, outcome({ circuitId: 'coral-coast', finishTime: 110 }));
+    expect(slower.newBestTime).toBe(false);
+    expect(slower.profile.bestTimes['coral-coast']).toBe(101);
+  });
+});

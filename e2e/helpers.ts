@@ -53,6 +53,7 @@ export const openGame = async (page: Page): Promise<void> => {
 };
 
 export interface RaceState {
+  circuitId: string;
   phase: string;
   clock: number;
   nextGate: number;
@@ -73,6 +74,7 @@ export interface RaceState {
 export const getState = async (page: Page) =>
   page.evaluate(() => window.__skyrushTest!.getState()) as Promise<{
     screen: string;
+    selectedCircuit: string;
     credits: number;
     build: { fuselage: string; engine: string; wings: string; livery: string };
     race: RaceState | null;

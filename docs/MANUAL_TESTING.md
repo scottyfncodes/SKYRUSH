@@ -18,12 +18,12 @@ http://localhost:4173/SKYRUSH/ to exercise the GitHub Pages subpath.
 
 ## Automated coverage
 
-- `npm run test`: 195 Vitest tests over performance, flight, gates, circuit, race, AI, rewards,
-  purchases and save/load.
+- `npm run test`: Vitest tests over performance, flight, gates, every course (clearance, rings, a
+  clean AI race and par), terrain, race, AI, rewards, purchases, course selection and save/load.
 - `npm run test:e2e`: Playwright on a desktop Chromium viewport and an iPhone-14-landscape viewport
   (Chromium with touch emulation): launch, garage, part changes, purchase, race entry, keyboard and
-  touch flight, pause/restart, a full race via the test harness, results, persistence, malformed
-  saves, and layout/overlap checks for every screen.
+  touch flight, pause/restart, a full race via the test harness, results, picking a course from
+  the menu and briefing, persistence, malformed saves, and layout/overlap checks for every screen.
 
 ## Still needs a physical iPhone
 
@@ -38,4 +38,6 @@ Chromium with iPhone viewport and touch emulation:
 - [ ] Frame rate stays smooth on a recent iPhone (shadows are disabled and pixel ratio is capped at
       1.75 on coarse-pointer devices); report the device model if it stutters.
 - [ ] The rotate-to-landscape prompt appears in portrait and the race pauses.
+- [ ] Each course (especially Frostline Pass's forest and Coral Coast's water) holds a smooth frame
+      rate on the device; note the course if one stutters.
 - [ ] Add-to-Home-Screen launch works with the Pages subpath.

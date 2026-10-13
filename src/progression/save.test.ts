@@ -40,6 +40,8 @@ describe('save/load round trip', () => {
       build: { ...DEFAULT_BUILD, wings: 'wings-compact', livery: 'livery-signal' },
       bestTime: 98.5,
       bestTimeBuild: { ...DEFAULT_BUILD },
+      bestTimes: { 'caldera-ridge': 98.5, 'coral-coast': 101.25 },
+      selectedCircuit: 'ember-mesa',
       racesCompleted: 3,
       podiums: 2,
       wins: 1,

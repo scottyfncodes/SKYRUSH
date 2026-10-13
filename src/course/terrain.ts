@@ -2,8 +2,9 @@ import { clamp01, lerp, smoothstep } from '../core/math';
 import { hash2 } from '../core/rng';
 
 /**
- * Deterministic procedural terrain for the Caldera Ridge circuit.
- * A rugged desert mountain range with a carved racing valley along the course.
+ * Deterministic procedural terrain for the circuits.
+ * A ridged mountain range (shaped per course by a {@link MountainProfile}) with a
+ * carved racing valley along the course, optionally flooded up to a sea level.
  * The same function drives both the rendered mesh and the collision queries.
  */
 
@@ -57,16 +58,52 @@ const ridged = (x: number, z: number, octaves: number, wavelength: number): numb
   return total / norm;
 };
 
+/** Shapes the mountains around a course. All lengths and heights in metres. */
+export interface MountainProfile {
+  /** Shifts the noise field so courses do not share mountains. */
+  offsetX: number;
+  offsetZ: number;
+  ridgeWavelength: number;
+  /** Ridge noise below this value is flat ground; higher means fewer, sharper peaks. */
+  ridgeThreshold: number;
+  ridgeAmplitude: number;
+  rollingWavelength: number;
+  rollingAmplitude: number;
+  /** Altitude of open ground between the ridges. */
+  base: number;
+  detailAmplitude: number;
+  /** Flat-topped mesas: heights snap to steps with a steep riser in the last `sharpness` of each. */
+  terrace?: { step: number; sharpness: number };
+}
+
+export const DEFAULT_MOUNTAINS: MountainProfile = {
+  offsetX: 0,
+  offsetZ: 0,
+  ridgeWavelength: 1400,
+  ridgeThreshold: 0.28,
+  ridgeAmplitude: 760,
+  rollingWavelength: 2600,
+  rollingAmplitude: 140,
+  base: -40,
+  detailAmplitude: 26,
+};
+
 export interface TerrainDefinition {
   route: readonly RoutePoint[];
   /** Half-width (m) of the flat valley floor around the route. */
   valleyWidth: number;
   /** Distance (m) over which the valley blends into the mountains. */
   valleyBlend: number;
+  mountains?: MountainProfile;
+  /** Water surface altitude. Collision treats water as ground; the seabed is still rendered. */
+  seaLevel?: number;
 }
 
 export interface Terrain {
+  /** Collision surface: the ground, or the water surface where that is higher. */
   heightAt: (x: number, z: number) => number;
+  /** The solid ground, ignoring water (equal to heightAt on dry courses). */
+  groundAt: (x: number, z: number) => number;
   /** Altitude of the carved valley floor nearest to a point. */
   floorAt: (x: number, z: number) => number;
   /** Horizontal distance from the route polyline. */
@@ -74,12 +111,29 @@ export interface Terrain {
   definition: TerrainDefinition;
 }
 
-/** Rugged mountain altitude ignoring the valley carve. */
-export const mountainHeight = (x: number, z: number): number => {
-  const ridge = ridged(x, z, 5, 1400);
-  const rolling = fbm(x + 2000, z - 1500, 4, 2600);
-  const base = Math.max(0, ridge - 0.28) * 760 + rolling * 140 - 40;
-  const detail = fbm(x, z, 3, 180) * 26;
+const terrace = (height: number, step: number, sharpness: number): number => {
+  const t = height / step;
+  const level = Math.floor(t);
+  const riser = clamp01((t - level - (1 - sharpness)) / sharpness);
+  return (level + riser * riser * (3 - 2 * riser)) * step;
+};
+
+/** Mountain altitude ignoring the valley carve. */
+export const mountainHeight = (
+  x: number,
+  z: number,
+  profile: MountainProfile = DEFAULT_MOUNTAINS,
+): number => {
+  const px = x + profile.offsetX;
+  const pz = z + profile.offsetZ;
+  const ridge = ridged(px, pz, 5, profile.ridgeWavelength);
+  const rolling = fbm(px + 2000, pz - 1500, 4, profile.rollingWavelength);
+  let base =
+    Math.max(0, ridge - profile.ridgeThreshold) * profile.ridgeAmplitude +
+    rolling * profile.rollingAmplitude +
+    profile.base;
+  if (profile.terrace) base = terrace(base, profile.terrace.step, profile.terrace.sharpness);
+  const detail = fbm(px, pz, 3, 180) * profile.detailAmplitude;
   return base + detail;
 };
 
@@ -87,6 +141,8 @@ const floorDetail = (x: number, z: number): number => fbm(x * 1.7, z * 1.7, 2, 1
 
 export const createTerrain = (definition: TerrainDefinition): Terrain => {
   const { route, valleyWidth, valleyBlend } = definition;
+  const mountains = definition.mountains ?? DEFAULT_MOUNTAINS;
+  const seaLevel = definition.seaLevel ?? -Infinity;
 
   const nearestRoute = (x: number, z: number): { distance: number; floor: number } => {
     let best = Infinity;
@@ -109,18 +165,28 @@ export const createTerrain = (definition: TerrainDefinition): Terrain => {
     return { distance: best, floor };
   };
 
-  const heightAt = (x: number, z: number): number => {
+  const groundAt = (x: number, z: number): number => {
     const { distance, floor } = nearestRoute(x, z);
     const carve = smoothstep(valleyWidth, valleyWidth + valleyBlend, distance);
-    const mountain = mountainHeight(x, z);
+    const mountain = mountainHeight(x, z, mountains);
     const valleyFloor = floor + floorDetail(x, z);
-    // Inside the valley the floor wins; outside we keep the mountains but never below the valley.
-    const blended = lerp(valleyFloor, Math.max(mountain, valleyFloor - 20), carve);
+    // Inside the valley the floor wins; outside we keep the mountains but never far below the
+    // valley. On water courses that guard fades out past the valley so a raised gate (a hop
+    // over a ridge) does not leave a plateau standing in the sea.
+    let guard = valleyFloor - 20;
+    if (definition.seaLevel !== undefined) {
+      const outer = valleyWidth + valleyBlend;
+      guard -= smoothstep(outer, outer * 2, distance) * 1000;
+    }
+    const blended = lerp(valleyFloor, Math.max(mountain, guard), carve);
     return blended;
   };
 
+  const heightAt = (x: number, z: number): number => Math.max(groundAt(x, z), seaLevel);
+
   return {
     heightAt,
+    groundAt,
     floorAt: (x, z) => nearestRoute(x, z).floor,
     distanceToRoute: (x, z) => nearestRoute(x, z).distance,
     definition,
