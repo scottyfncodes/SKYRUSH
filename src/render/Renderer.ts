@@ -10,8 +10,12 @@ import {
 /** Exposure for the garage; each course sets its own while racing. */
 export const DEFAULT_EXPOSURE = 1.05;
 
+export type RenderQuality = 'high' | 'low';
+
 export interface RendererOptions {
   shadows: boolean;
+  /** 'low' drops scenery props and coarsens the terrain mesh (used without a GPU). */
+  quality: RenderQuality;
   maxPixelRatio: number;
 }
 
@@ -22,6 +26,16 @@ export const detectWebGL = (): boolean => {
   } catch {
     return false;
   }
+};
+
+/**
+ * True when WebGL runs on a CPU rasterizer (SwiftShader, llvmpipe), e.g. a machine or VM
+ * without a usable GPU. Such renderers manage only a few frames per second at full detail.
+ */
+export const isSoftwareRenderer = (gl: WebGLRenderingContext | WebGL2RenderingContext): boolean => {
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  return typeof name === 'string' && /swiftshader|llvmpipe|softpipe|software/i.test(name);
 };
 
 export const isCoarsePointer = (): boolean =>
@@ -47,16 +61,17 @@ export class Renderer {
     options: Partial<RendererOptions> = {},
   ) {
     const coarse = isCoarsePointer();
-    this.options = {
-      shadows: options.shadows ?? !coarse,
-      maxPixelRatio: options.maxPixelRatio ?? (coarse ? 1.75 : 2),
-    };
     this.gl = new WebGLRenderer({
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
       alpha: false,
     });
+    this.options = {
+      shadows: options.shadows ?? !coarse,
+      maxPixelRatio: options.maxPixelRatio ?? (coarse ? 1.75 : 2),
+      quality: options.quality ?? (isSoftwareRenderer(this.gl.getContext()) ? 'low' : 'high'),
+    };
     this.gl.outputColorSpace = SRGBColorSpace;
     this.gl.toneMapping = ACESFilmicToneMapping;
     this.gl.toneMappingExposure = DEFAULT_EXPOSURE;

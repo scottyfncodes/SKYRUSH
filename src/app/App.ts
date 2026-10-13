@@ -234,7 +234,9 @@ export class App {
       return false;
     }
     try {
-      this.renderer = new Renderer(this.canvas);
+      // ?quality=high|low overrides the automatic choice (low only without a GPU).
+      const quality = new URLSearchParams(window.location.search).get('quality');
+      this.renderer = new Renderer(this.canvas, quality === 'high' || quality === 'low' ? { quality } : {});
     } catch (error) {
       console.error(error);
       this.fail(

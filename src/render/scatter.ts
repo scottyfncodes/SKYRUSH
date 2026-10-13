@@ -181,6 +181,9 @@ export interface ScatterOptions {
  * Deterministic instanced props (trees, rocks, cacti) placed on suitable ground and
  * kept clear of the racing corridor. Purely visual: they have no collision.
  */
+/** Props are grouped into square tiles this wide so the camera only draws tiles in view. */
+const TILE_SIZE = 1000;
+
 export const createScatter = (
   theme: CourseTheme,
   terrain: Terrain,
@@ -189,7 +192,6 @@ export const createScatter = (
 ): { meshes: InstancedMesh[]; dispose: () => void } => {
   const meshes: InstancedMesh[] = [];
   const disposables: { dispose: () => void }[] = [];
-  const matrix = new Matrix4();
   const position = new Vector3();
   const quaternion = new Quaternion();
   const scale = new Vector3();
@@ -206,7 +208,7 @@ export const createScatter = (
       flatShading: true,
     });
     disposables.push(geometry, material);
-    const mesh = new InstancedMesh(geometry, material, rule.count);
+    const tiles = new Map<string, { matrices: Matrix4[]; shades: number[] }>();
     let placed = 0;
     const attempts = rule.count * 5;
     for (let attempt = 0; attempt < attempts && placed < rule.count; attempt += 1) {
@@ -225,17 +227,28 @@ export const createScatter = (
       position.set(x, y - 0.3 * s, z);
       quaternion.setFromAxisAngle(up, rng() * Math.PI * 2);
       scale.set(s * (0.85 + rng() * 0.3), s, s * (0.85 + rng() * 0.3));
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(placed, matrix);
-      const shade = 0.82 + rng() * 0.3;
-      mesh.setColorAt(placed, tint.setRGB(shade, shade, shade));
+      const key = `${Math.floor(x / TILE_SIZE)},${Math.floor(z / TILE_SIZE)}`;
+      let tile = tiles.get(key);
+      if (!tile) {
+        tile = { matrices: [], shades: [] };
+        tiles.set(key, tile);
+      }
+      tile.matrices.push(new Matrix4().compose(position, quaternion, scale));
+      tile.shades.push(0.82 + rng() * 0.3);
       placed += 1;
     }
-    mesh.count = placed;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    meshes.push(mesh);
+    for (const tile of tiles.values()) {
+      const mesh = new InstancedMesh(geometry, material, tile.matrices.length);
+      tile.matrices.forEach((matrix, i) => {
+        mesh.setMatrixAt(i, matrix);
+        mesh.setColorAt(i, tint.setRGB(tile.shades[i]!, tile.shades[i]!, tile.shades[i]!));
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // Bounds per tile let three.js frustum-cull tiles behind or beside the camera.
+      mesh.computeBoundingSphere();
+      meshes.push(mesh);
+    }
   });
 
   return { meshes, dispose: () => disposables.forEach((d) => d.dispose()) };

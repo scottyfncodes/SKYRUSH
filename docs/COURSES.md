@@ -35,8 +35,19 @@ terrain and metadata the simulation and renderer use. Every course starts facing
 | Landmarks  | Themed rock for spires and arches, snow caps on alpine spires, lighthouses on the coast.         |
 
 Props are purely visual and have no collision, so every scatter rule keeps a `routeClearance` from
-the racing line. The menu and briefing cards draw an SVG skyline from each course's real terrain and
-theme colours (`src/ui/CoursePicker.ts`).
+the racing line.
+
+### Performance
+
+- Clouds are baked once into a small tiling noise texture; the sky shader reads two texels per pixel
+  and draws after the opaque scene, so terrain-covered pixels are never shaded.
+- Props are instanced per 1 km tile: tiles outside the view are frustum-culled, and tiles over
+  2.8 km away (already deep in the haze) are hidden.
+- When WebGL runs on a CPU rasterizer (SwiftShader, llvmpipe: no usable GPU), `Renderer` picks the
+  `low` quality tier: no props, a coarser terrain and water mesh. Sky, light, palette and water
+  shading stay the same. `?quality=high` or `?quality=low` in the URL overrides the choice. CI's
+  headless browser runs on SwiftShader, so it gets the low tier too. The menu and briefing cards draw an SVG skyline from each course's real terrain and
+  theme colours (`src/ui/CoursePicker.ts`).
 
 ## The courses
 

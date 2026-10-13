@@ -3,6 +3,12 @@ import {
   BackSide,
   BufferAttribute,
   Color,
+  DataTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  RedFormat,
+  RepeatWrapping,
+  UnsignedByteType,
   Mesh,
   PlaneGeometry,
   ShaderMaterial,
@@ -15,31 +21,56 @@ import type { Terrain } from '../course/terrain';
 import { hash2 } from '../core/rng';
 import { clamp01, smoothstep } from '../core/math';
 
-/** Shared GLSL value noise (2D) for the sky clouds. */
-const noiseGlsl = /* glsl */ `
-  float hash12(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-  }
-  float vnoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x),
-               mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-  float fbm(vec2 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    for (int i = 0; i < 5; i++) {
-      value += amplitude * vnoise(p);
-      p = p * 2.03 + vec2(17.1, 9.2);
-      amplitude *= 0.5;
+const CLOUD_TEXTURE_SIZE = 256;
+/** Noise lattice cells across the cloud texture at the coarsest octave. */
+const CLOUD_PERIOD = 8;
+
+/**
+ * Tileable fractal value noise baked once into a texture, so the sky shader reads
+ * clouds with two texture lookups instead of evaluating noise per pixel per frame.
+ */
+const createCloudTexture = (): DataTexture => {
+  const size = CLOUD_TEXTURE_SIZE;
+  const data = new Uint8Array(size * size);
+  const lattice = (x: number, y: number, period: number): number => {
+    const ix = ((x % period) + period) % period;
+    const iy = ((y % period) + period) % period;
+    let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(period, 2246822519);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const smooth = (t: number) => t * t * (3 - 2 * t);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      let value = 0;
+      let amplitude = 0.5;
+      let total = 0;
+      for (let octave = 0; octave < 5; octave += 1) {
+        const period = CLOUD_PERIOD << octave;
+        const fx = (x / size) * period;
+        const fy = (y / size) * period;
+        const ix = Math.floor(fx);
+        const iy = Math.floor(fy);
+        const ux = smooth(fx - ix);
+        const uy = smooth(fy - iy);
+        const top = lattice(ix, iy, period) * (1 - ux) + lattice(ix + 1, iy, period) * ux;
+        const bottom = lattice(ix, iy + 1, period) * (1 - ux) + lattice(ix + 1, iy + 1, period) * ux;
+        value += (top * (1 - uy) + bottom * uy) * amplitude;
+        total += amplitude;
+        amplitude *= 0.5;
+      }
+      data[y * size + x] = Math.round((value / total) * 255);
     }
-    return value;
   }
-`;
+  const texture = new DataTexture(data, size, size, RedFormat, UnsignedByteType);
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.magFilter = LinearFilter;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+};
 
 const skyVertex = /* glsl */ `
   varying vec3 vDirection;
@@ -60,8 +91,8 @@ const skyFragment = /* glsl */ `
   uniform vec3 cloudShade;
   uniform float cloudCover;
   uniform float time;
+  uniform sampler2D cloudNoise;
   varying vec3 vDirection;
-  ${noiseGlsl}
   void main() {
     vec3 dir = normalize(vDirection);
     float y = dir.y;
@@ -75,11 +106,11 @@ const skyFragment = /* glsl */ `
     color += glowColor * pow(sunDot, 48.0) * 0.45;
 
     if (y > 0.0 && cloudCover > 0.0) {
-      vec2 uv = dir.xz / (y + 0.14) * 1.4 + vec2(time * 0.006, time * 0.0025);
-      float n = fbm(uv);
+      vec2 uv = (dir.xz / (y + 0.14) * 1.4 + vec2(time * 0.006, time * 0.0025)) / ${CLOUD_PERIOD.toFixed(1)};
+      float n = texture2D(cloudNoise, uv).r;
       float density = smoothstep(1.0 - cloudCover, 1.0 - cloudCover + 0.3, n);
       // Cheap self-shadowing: sample again toward the sun.
-      float toward = fbm(uv + sunDirection.xz * 0.12);
+      float toward = texture2D(cloudNoise, uv + sunDirection.xz * (0.12 / ${CLOUD_PERIOD.toFixed(1)})).r;
       float light = clamp(0.55 + (n - toward) * 3.5 + pow(sunDot, 4.0) * 0.35, 0.0, 1.0);
       vec3 cloud = mix(cloudShade, cloudLit, light);
       density *= smoothstep(0.0, 0.2, y);
@@ -96,10 +127,12 @@ const skyFragment = /* glsl */ `
 export interface SkyHandles {
   mesh: Mesh;
   material: ShaderMaterial;
+  clouds: DataTexture;
   update: (time: number, focus: Vector3) => void;
 }
 
 export const createSky = (theme: CourseTheme, sunDirection: Vector3): SkyHandles => {
+  const clouds = createCloudTexture();
   const material = new ShaderMaterial({
     uniforms: {
       zenithColor: { value: new Color(theme.sky.zenith) },
@@ -111,6 +144,7 @@ export const createSky = (theme: CourseTheme, sunDirection: Vector3): SkyHandles
       cloudLit: { value: new Color(theme.sky.cloudLit) },
       cloudShade: { value: new Color(theme.sky.cloudShade) },
       cloudCover: { value: theme.sky.clouds },
+      cloudNoise: { value: clouds },
       time: { value: 0 },
     },
     vertexShader: skyVertex,
@@ -121,10 +155,12 @@ export const createSky = (theme: CourseTheme, sunDirection: Vector3): SkyHandles
   });
   const mesh = new Mesh(new SphereGeometry(6000, 48, 24), material);
   mesh.frustumCulled = false;
-  mesh.renderOrder = -1;
+  // Drawn after the opaque scene (depth test on, depth write off) so only uncovered pixels are shaded.
+  mesh.renderOrder = 1;
   return {
     mesh,
     material,
+    clouds,
     update: (time, focus) => {
       material.uniforms.time!.value = time;
       mesh.position.copy(focus);
@@ -283,6 +319,7 @@ export const createWater = (
   center: { x: number; z: number },
   size: number,
   sunDirection: Vector3,
+  segments = 200,
 ): WaterHandles | null => {
   if (!theme.water) return null;
   const material = new ShaderMaterial({
@@ -305,7 +342,6 @@ export const createWater = (
     fog: true,
   });
 
-  const segments = 200;
   const near = new PlaneGeometry(size, size, segments, segments);
   near.rotateX(-Math.PI / 2);
   const positions = near.attributes.position as BufferAttribute;

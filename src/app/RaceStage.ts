@@ -70,7 +70,10 @@ export class RaceStage {
 
   constructor(private readonly options: RaceStageOptions) {
     const { circuit, renderer, build } = options;
-    this.world = createWorld(circuit, { shadows: renderer.options.shadows });
+    this.world = createWorld(circuit, {
+      shadows: renderer.options.shadows,
+      quality: renderer.options.quality,
+    });
     this.camera = new ChaseCamera(renderer.aspect);
     this.burst = new CrashBurst(this.world.scene);
     this.reducedMotion = prefersReducedMotion();

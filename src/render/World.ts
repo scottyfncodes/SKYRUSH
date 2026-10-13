@@ -29,12 +29,16 @@ import {
 import type { Circuit, Landmark } from '../course/circuit';
 import type { BonusRing, GateDefinition } from '../course/gates';
 import { PALETTE } from './materials';
+import type { RenderQuality } from './Renderer';
 import { clamp01 } from '../core/math';
 import { createSky, createWater, terrainColor } from './environment';
 import { createScatter } from './scatter';
 
 const TERRAIN_SIZE = 8000;
-const TERRAIN_SEGMENTS = 256;
+const TERRAIN_SEGMENTS = 240;
+const LOW_TERRAIN_SEGMENTS = 150;
+/** Prop tiles further than this from the aircraft are hidden; the haze hides them anyway. */
+const PROP_DRAW_DISTANCE = 2800;
 /** Distance from the focus point to the sun light (shadow camera placement). */
 const SUN_DISTANCE = 1100;
 
@@ -104,7 +108,11 @@ const makeLabelTexture = (text: string, color: string): CanvasTexture => {
   return texture;
 };
 
-export const createWorld = (circuit: Circuit, options: { shadows: boolean }): WorldHandles => {
+export const createWorld = (
+  circuit: Circuit,
+  options: { shadows: boolean; quality: RenderQuality },
+): WorldHandles => {
+  const low = options.quality === 'low';
   const { theme } = circuit;
   const scene = new Scene();
   scene.background = new Color(theme.fog.color);
@@ -142,11 +150,12 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   // --- Sky --------------------------------------------------------------------------
   const sky = createSky(theme, sunOffset);
   scene.add(sky.mesh);
-  disposables.push(sky.mesh.geometry, sky.material);
+  disposables.push(sky.mesh.geometry, sky.material, sky.clouds);
 
   // --- Terrain -----------------------------------------------------------------------
   const center = circuit.center;
-  const terrainGeometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
+  const segments = low ? LOW_TERRAIN_SEGMENTS : TERRAIN_SEGMENTS;
+  const terrainGeometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, segments, segments);
   terrainGeometry.rotateX(-Math.PI / 2);
   const positions = terrainGeometry.attributes.position as BufferAttribute;
   for (let i = 0; i < positions.count; i += 1) {
@@ -185,7 +194,15 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   const water =
     circuit.seaLevel === null
       ? null
-      : createWater(theme, circuit.terrain, circuit.seaLevel, center, TERRAIN_SIZE, sunOffset);
+      : createWater(
+          theme,
+          circuit.terrain,
+          circuit.seaLevel,
+          center,
+          TERRAIN_SIZE,
+          sunOffset,
+          low ? 100 : 200,
+        );
   if (water) {
     for (const mesh of water.meshes) {
       scene.add(mesh);
@@ -195,7 +212,8 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   }
 
   // --- Props: trees, rocks, cacti --------------------------------------------------------
-  const scatter = createScatter(theme, circuit.terrain, circuit.seaLevel, {
+  // Low quality (no GPU) skips the props: thousands of instances are too much for a CPU rasterizer.
+  const scatter = createScatter(low ? { ...theme, scatter: [] } : theme, circuit.terrain, circuit.seaLevel, {
     center,
     extent: 2900,
     seed: circuit.gates.length * 101 + Math.round(center.x),
@@ -309,6 +327,10 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
     sun.target.position.copy(focus);
     sun.position.copy(focus).add(sunOffset);
     sky.update(time, focus);
+    for (const mesh of scatter.meshes) {
+      const bounds = mesh.boundingSphere;
+      if (bounds) mesh.visible = bounds.center.distanceTo(focus) - bounds.radius < PROP_DRAW_DISTANCE;
+    }
     water?.update(time);
     for (const visual of gates) {
       if (visual.state === 'next') {
