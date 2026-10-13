@@ -126,6 +126,9 @@ test.describe('SKYRUSH core flow', () => {
 
   test('keyboard flight controls change the aircraft state', async ({ page, isMobile }) => {
     test.skip(isMobile, 'keyboard controls are desktop-only');
+    // ~7 s of simulated flight plus a restart countdown; software WebGL in CI runs the
+    // simulation well below real time, so this needs more than the default 60 s.
+    test.slow();
     await openGame(page);
     await startRaceFromMenu(page);
     await waitForRacing(page);
