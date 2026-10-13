@@ -10,6 +10,7 @@ import {
 } from '../aircraft/parts';
 import { clamp, clamp01 } from '../core/math';
 import { isBadgeId, isLiveryUnlocked } from './badges';
+import { DEFAULT_COURSE_ID, isCourseId } from '../course/courses';
 
 export const STARTING_CREDITS = 2500;
 export const MAX_HISTORY = 12;
@@ -41,8 +42,13 @@ export interface PlayerProfile {
   credits: number;
   ownedParts: string[];
   build: AircraftBuild;
+  /** Best Caldera Ridge time (kept for saves from before multiple courses; see bestTimes). */
   bestTime: number | null;
   bestTimeBuild: AircraftBuild | null;
+  /** Best finish time per course id. */
+  bestTimes: Record<string, number>;
+  /** Course the Race button starts. */
+  selectedCircuit: string;
   racesCompleted: number;
   podiums: number;
   wins: number;
@@ -73,6 +79,8 @@ export const createDefaultProfile = (): PlayerProfile => ({
   build: { ...DEFAULT_BUILD },
   bestTime: null,
   bestTimeBuild: null,
+  bestTimes: {},
+  selectedCircuit: DEFAULT_COURSE_ID,
   racesCompleted: 0,
   podiums: 0,
   wins: 0,
@@ -160,6 +168,16 @@ export const setLivery = (profile: PlayerProfile, liveryId: string): PlayerProfi
     ? { ...profile, build: { ...profile.build, livery: liveryId } }
     : profile;
 
+/** Best finish time on a course, or null if it has never been finished. */
+export const bestTimeFor = (profile: PlayerProfile, circuitId: string): number | null =>
+  profile.bestTimes[circuitId] ?? null;
+
+/** Selects the course the Race button starts; unknown ids leave the profile unchanged. */
+export const selectCircuit = (profile: PlayerProfile, circuitId: string): PlayerProfile =>
+  isCourseId(circuitId) && circuitId !== profile.selectedCircuit
+    ? { ...profile, selectedCircuit: circuitId }
+    : profile;
+
 export const updateSettings = (profile: PlayerProfile, patch: Partial<PlayerSettings>): PlayerProfile => ({
   ...profile,
   settings: sanitiseSettings({ ...profile.settings, ...patch }),
@@ -240,6 +258,16 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
       : null;
   const bestTimeBuild =
     bestTime !== null && isValidBuild(data.bestTimeBuild) ? { ...data.bestTimeBuild } : null;
+  const bestTimes: Record<string, number> = {};
+  if (typeof data.bestTimes === 'object' && data.bestTimes !== null) {
+    for (const [id, value] of Object.entries(data.bestTimes as Record<string, unknown>)) {
+      if (isCourseId(id) && typeof value === 'number' && Number.isFinite(value) && value > 0)
+        bestTimes[id] = value;
+    }
+  }
+  // Saves from before multiple courses only know the Caldera Ridge best.
+  if (bestTime !== null && bestTimes[DEFAULT_COURSE_ID] === undefined)
+    bestTimes[DEFAULT_COURSE_ID] = bestTime;
 
   const history: RaceRecord[] = [];
   if (Array.isArray(data.history)) {
@@ -278,6 +306,8 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     build,
     bestTime,
     bestTimeBuild,
+    bestTimes,
+    selectedCircuit: isCourseId(data.selectedCircuit) ? data.selectedCircuit : DEFAULT_COURSE_ID,
     racesCompleted: positiveInt(data.racesCompleted),
     podiums: positiveInt(data.podiums),
     wins: positiveInt(data.wins),

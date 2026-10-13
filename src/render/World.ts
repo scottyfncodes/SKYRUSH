@@ -1,7 +1,6 @@
 import type { Object3D } from 'three';
 import {
   AmbientLight,
-  BackSide,
   BoxGeometry,
   AdditiveBlending,
   BufferAttribute,
@@ -23,7 +22,6 @@ import {
   PlaneGeometry,
   Quaternion,
   Scene,
-  ShaderMaterial,
   SphereGeometry,
   TorusGeometry,
   Vector3,
@@ -31,37 +29,14 @@ import {
 import type { Circuit, Landmark } from '../course/circuit';
 import type { BonusRing, GateDefinition } from '../course/gates';
 import { PALETTE } from './materials';
-import { hash2 } from '../core/rng';
-import { clamp01, smoothstep } from '../core/math';
+import { clamp01 } from '../core/math';
+import { createSky, createWater, terrainColor } from './environment';
+import { createScatter } from './scatter';
 
 const TERRAIN_SIZE = 8000;
-const TERRAIN_CENTER = { x: 650, z: 500 };
-
-const skyVertex = /* glsl */ `
-  varying vec3 vWorldPosition;
-  void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = worldPosition.xyz;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const skyFragment = /* glsl */ `
-  uniform vec3 topColor;
-  uniform vec3 horizonColor;
-  uniform vec3 sunDirection;
-  varying vec3 vWorldPosition;
-  void main() {
-    vec3 dir = normalize(vWorldPosition);
-    float h = clamp(dir.y, -0.05, 1.0);
-    float t = pow(1.0 - h, 2.2);
-    vec3 color = mix(topColor, horizonColor, t);
-    float sun = max(dot(dir, normalize(sunDirection)), 0.0);
-    color += vec3(1.0, 0.82, 0.55) * pow(sun, 180.0) * 0.9;
-    color += vec3(1.0, 0.7, 0.4) * pow(sun, 8.0) * 0.12;
-    gl_FragColor = vec4(color, 1.0);
-  }
-`;
+const TERRAIN_SEGMENTS = 256;
+/** Distance from the focus point to the sun light (shadow camera placement). */
+const SUN_DISTANCE = 1100;
 
 export interface GateVisual {
   gate: GateDefinition;
@@ -88,6 +63,8 @@ export interface RingVisual {
 export interface WorldHandles {
   scene: Scene;
   sun: DirectionalLight;
+  /** Tone-mapping exposure the course is graded for. */
+  exposure: number;
   gates: GateVisual[];
   rings: RingVisual[];
   update: (dt: number, focus: Vector3) => void;
@@ -104,24 +81,6 @@ const GATE_FLASH_SECONDS = 0.45;
 const RING_BURST_SECONDS = 0.45;
 const _flashColor = new Color();
 const _white = new Color(0xffffff);
-
-const terrainColor = (height: number, slope: number, x: number, z: number, target: Color): Color => {
-  const sand = new Color(PALETTE.sand);
-  const rock = new Color(PALETTE.rock);
-  const dark = new Color(PALETTE.rockDark);
-  const snow = new Color(PALETTE.snow);
-  const noise = hash2(Math.floor(x / 23), Math.floor(z / 23)) * 0.1 - 0.05;
-  const scrub = new Color(0x8f8a63);
-  const band = hash2(Math.floor(x / 90), Math.floor(z / 90));
-  target.copy(sand);
-  target.lerp(scrub, smoothstep(0.55, 0.9, band) * 0.5 * (1 - smoothstep(20, 60, height)));
-  const rockMix = smoothstep(14, 80, height) * 0.75 + smoothstep(0.2, 0.55, slope) * 0.7;
-  target.lerp(rock, clamp01(rockMix));
-  target.lerp(dark, smoothstep(0.5, 0.9, slope) * 0.75);
-  target.lerp(snow, smoothstep(420, 620, height) * (1 - smoothstep(0.4, 0.8, slope)));
-  target.offsetHSL(0, 0, noise);
-  return target;
-};
 
 const makeLabelTexture = (text: string, color: string): CanvasTexture => {
   const canvas = document.createElement('canvas');
@@ -146,19 +105,25 @@ const makeLabelTexture = (text: string, color: string): CanvasTexture => {
 };
 
 export const createWorld = (circuit: Circuit, options: { shadows: boolean }): WorldHandles => {
+  const { theme } = circuit;
   const scene = new Scene();
-  scene.background = new Color(PALETTE.fog);
-  scene.fog = new Fog(PALETTE.fog, 900, 5200);
+  scene.background = new Color(theme.fog.color);
+  scene.fog = new Fog(theme.fog.color, theme.fog.near, theme.fog.far);
 
   const disposables: { dispose: () => void }[] = [];
 
   // --- Lights ---------------------------------------------------------------------
-  const hemisphere = new HemisphereLight(0xcfe3ff, 0x6b5440, 0.75);
+  const sunOffset = new Vector3(...theme.sun.direction).normalize().multiplyScalar(SUN_DISTANCE);
+  const hemisphere = new HemisphereLight(
+    theme.hemisphere.sky,
+    theme.hemisphere.ground,
+    theme.hemisphere.intensity,
+  );
   scene.add(hemisphere);
-  const ambient = new AmbientLight(0xffffff, 0.12);
+  const ambient = new AmbientLight(0xffffff, theme.ambient);
   scene.add(ambient);
-  const sun = new DirectionalLight(0xfff0d8, 2.6);
-  sun.position.set(-600, 900, -300);
+  const sun = new DirectionalLight(theme.sun.color, theme.sun.intensity);
+  sun.position.copy(sunOffset);
   sun.castShadow = options.shadows;
   if (options.shadows) {
     sun.shadow.mapSize.set(2048, 2048);
@@ -175,32 +140,19 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   scene.add(sun.target);
 
   // --- Sky --------------------------------------------------------------------------
-  const skyMaterial = new ShaderMaterial({
-    uniforms: {
-      topColor: { value: new Color(PALETTE.skyTop) },
-      horizonColor: { value: new Color(PALETTE.skyHorizon) },
-      sunDirection: { value: sun.position.clone().normalize() },
-    },
-    vertexShader: skyVertex,
-    fragmentShader: skyFragment,
-    side: BackSide,
-    depthWrite: false,
-    fog: false,
-  });
-  const sky = new Mesh(new SphereGeometry(6000, 32, 16), skyMaterial);
-  sky.frustumCulled = false;
-  scene.add(sky);
-  disposables.push(sky.geometry, skyMaterial);
+  const sky = createSky(theme, sunOffset);
+  scene.add(sky.mesh);
+  disposables.push(sky.mesh.geometry, sky.material);
 
   // --- Terrain -----------------------------------------------------------------------
-  const segments = 240;
-  const terrainGeometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, segments, segments);
+  const center = circuit.center;
+  const terrainGeometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
   terrainGeometry.rotateX(-Math.PI / 2);
   const positions = terrainGeometry.attributes.position as BufferAttribute;
   for (let i = 0; i < positions.count; i += 1) {
-    const x = positions.getX(i) + TERRAIN_CENTER.x;
-    const z = positions.getZ(i) + TERRAIN_CENTER.z;
-    positions.setXYZ(i, x, circuit.terrain.heightAt(x, z), z);
+    const x = positions.getX(i) + center.x;
+    const z = positions.getZ(i) + center.z;
+    positions.setXYZ(i, x, circuit.terrain.groundAt(x, z), z);
   }
   terrainGeometry.computeVertexNormals();
   // Colour from height and the computed normal, so no extra height samples are needed.
@@ -209,7 +161,15 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   const color = new Color();
   for (let i = 0; i < positions.count; i += 1) {
     const slope = clamp01((1 - normals.getY(i)) * 1.6);
-    terrainColor(positions.getY(i), slope, positions.getX(i), positions.getZ(i), color);
+    terrainColor(
+      theme.terrain,
+      positions.getY(i),
+      slope,
+      positions.getX(i),
+      positions.getZ(i),
+      circuit.seaLevel,
+      color,
+    );
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
@@ -220,6 +180,28 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   terrain.receiveShadow = options.shadows;
   scene.add(terrain);
   disposables.push(terrainGeometry, terrainMaterial);
+
+  // --- Water ------------------------------------------------------------------------------
+  const water =
+    circuit.seaLevel === null
+      ? null
+      : createWater(theme, circuit.terrain, circuit.seaLevel, center, TERRAIN_SIZE, sunOffset);
+  if (water) {
+    for (const mesh of water.meshes) {
+      scene.add(mesh);
+      disposables.push(mesh.geometry);
+    }
+    disposables.push(water.material);
+  }
+
+  // --- Props: trees, rocks, cacti --------------------------------------------------------
+  const scatter = createScatter(theme, circuit.terrain, circuit.seaLevel, {
+    center,
+    extent: 2900,
+    seed: circuit.gates.length * 101 + Math.round(center.x),
+  });
+  for (const mesh of scatter.meshes) scene.add(mesh);
+  disposables.push(scatter);
 
   // --- Course markers: ground chevrons under the route ------------------------------------
   const markerGeometry = new BoxGeometry(5, 0.6, 2.4);
@@ -325,8 +307,9 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   const update = (dt: number, focus: Vector3): void => {
     time += dt;
     sun.target.position.copy(focus);
-    sun.position.copy(focus).add(new Vector3(-600, 900, -300));
-    sky.position.copy(focus);
+    sun.position.copy(focus).add(sunOffset);
+    sky.update(time, focus);
+    water?.update(time);
     for (const visual of gates) {
       if (visual.state === 'next') {
         const pulse = 0.65 + 0.35 * Math.sin(time * 4);
@@ -360,6 +343,7 @@ export const createWorld = (circuit: Circuit, options: { shadows: boolean }): Wo
   return {
     scene,
     sun,
+    exposure: theme.exposure,
     gates,
     rings,
     update,
@@ -632,12 +616,15 @@ const createLandmark = (
     emissiveIntensity: 0.8,
   });
   const rock = new MeshStandardMaterial({
-    color: 0x6e5a4b,
+    color: circuit.theme.landmarkRock,
     roughness: 0.95,
     metalness: 0.02,
     flatShading: true,
   });
-  disposables.push(graphite, warm, amber, cyan, rock);
+  const snow = new MeshStandardMaterial({ color: 0xf4f7fb, roughness: 0.8, flatShading: true });
+  const white = new MeshStandardMaterial({ color: 0xf1ede6, roughness: 0.6 });
+  const red = new MeshStandardMaterial({ color: 0xc8352a, roughness: 0.55 });
+  disposables.push(graphite, warm, amber, cyan, rock, snow, white, red);
 
   const add = (mesh: Mesh): void => {
     mesh.castShadow = false;
@@ -733,6 +720,38 @@ const createLandmark = (
       const second = new Mesh(new ConeGeometry(38 * s, 170 * s, 6), rock);
       second.position.set(48 * s, 60 * s, 20 * s);
       add(second);
+      if (circuit.theme.landmarkSnow) {
+        // Snow caps: the top fifth of each cone, slightly proud of the rock.
+        const cap = new Mesh(new ConeGeometry(12.5 * s, 56 * s, 7), snow);
+        cap.position.y = 110 * s + 130 * s - 28 * s + 1;
+        add(cap);
+        const capSecond = new Mesh(new ConeGeometry(9 * s, 40 * s, 6), snow);
+        capSecond.position.set(48 * s, 60 * s + 85 * s - 20 * s + 1, 20 * s);
+        add(capSecond);
+      }
+      break;
+    }
+    case 'lighthouse': {
+      const base = new Mesh(new CylinderGeometry(16, 20, 10, 9), rock);
+      base.position.y = 2;
+      add(base);
+      for (let i = 0; i < 5; i += 1) {
+        const band = new Mesh(
+          new CylinderGeometry(4.6 - i * 0.35, 5 - i * 0.35, 8, 14),
+          i % 2 === 0 ? white : red,
+        );
+        band.position.y = 11 + i * 8;
+        add(band);
+      }
+      const gallery = new Mesh(new CylinderGeometry(4.6, 4.6, 1.2, 14), graphite);
+      gallery.position.y = 51.5;
+      add(gallery);
+      const lamp = new Mesh(new CylinderGeometry(2.4, 2.4, 4, 10), amber);
+      lamp.position.y = 54.5;
+      add(lamp);
+      const roof = new Mesh(new ConeGeometry(3.4, 4, 10), red);
+      roof.position.y = 58.5;
+      add(roof);
       break;
     }
     case 'arch': {

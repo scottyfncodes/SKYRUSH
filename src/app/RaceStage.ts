@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { lookOrientation, type Circuit } from '../course/circuit';
-import type { Renderer } from '../render/Renderer';
+import { DEFAULT_EXPOSURE, type Renderer } from '../render/Renderer';
 import { createWorld, type WorldHandles } from '../render/World';
 import { AircraftView } from '../render/AircraftView';
 import { ChaseCamera } from '../camera/ChaseCamera';
@@ -454,6 +454,7 @@ export class RaceStage {
       player.flight.overheated,
     );
 
+    renderer.gl.toneMappingExposure = this.world.exposure;
     renderer.render(this.world.scene, this.camera.camera);
   }
 
@@ -495,6 +496,7 @@ export class RaceStage {
     this.speedLines?.dispose();
     this.contrails.dispose();
     this.world.dispose();
+    this.options.renderer.gl.toneMappingExposure = DEFAULT_EXPOSURE;
   }
 }
 

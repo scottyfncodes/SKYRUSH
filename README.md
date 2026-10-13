@@ -3,7 +3,7 @@
 **Build a machine. Master the course. Earn better parts. Build something faster.**
 
 SKYRUSH is a browser game about building a custom racing aircraft and flying it flat-out through
-a gated circuit against three AI pilots. It runs on desktop browsers and on iPhone Safari in
+four gated courses against three AI pilots. It runs on desktop browsers and on iPhone Safari in
 landscape, needs no account or backend, and deploys as a static site to GitHub Pages.
 
 ![Main menu](docs/screenshots/main-menu.png)
@@ -12,11 +12,29 @@ landscape, needs no account or backend, and deploys as a static site to GitHub P
 
 | Screen    | What happens                                                                                                    |
 | --------- | --------------------------------------------------------------------------------------------------------------- |
-| Main menu | Credits, best time, race count. Race, Garage, or Controls & Settings.                                           |
+| Main menu | Pick a course (‹ ›), credits, best time on that course, race count. Race, Garage, or Controls & Settings.       |
 | Garage    | Swap fuselage, engine and wings; apply a livery; compare every stat against the installed build; buy parts.     |
-| Briefing  | Circuit facts, the three opponents, the control bindings for your device, assistance and sensitivity settings.  |
-| Race      | 3-2-1 countdown, 15 gates through Caldera Ridge, live position, timer, boost and heat, next-gate marker.        |
+| Briefing  | All four courses to choose from, course facts, opponents, control bindings, assistance and sensitivity.         |
+| Race      | 3-2-1 countdown, 14–15 gates, live position, timer, boost and heat, next-gate marker.                           |
 | Results   | Finishing position, time with penalties, reward breakdown, standings, newly unlocked parts. Race again or tune. |
+
+### Courses
+
+Every course is open from the start, keeps its own best time, and has its own landscape, light and
+props. The selected course is remembered between sessions.
+
+| Course         | Character | Setting                                                                                                | Par  |
+| -------------- | --------- | ------------------------------------------------------------------------------------------------------ | ---- |
+| Caldera Ridge  | Balanced  | Desert canyon at golden hour: a flat-out straight, a climb over the ridge, the Needle chicane.         | 1:45 |
+| Frostline Pass | Climbing  | Alpine valleys under snowbound peaks and pine forest, up to the High Pass gate at 370 m and back down. | 1:44 |
+| Coral Coast    | Fast      | Low over turquoise water between jungle islands and sea stacks, with a hop over the Saddle ridge.      | 1:43 |
+| Ember Mesa     | Technical | Terraced red mesas at dusk, a chicane under the Ember Arch and a hop across a mesa top.                | 1:40 |
+
+| ![Caldera Ridge](docs/screenshots/course-caldera-ridge.jpg) | ![Frostline Pass](docs/screenshots/course-frostline-pass.jpg) |
+| ----------------------------------------------------------- | ------------------------------------------------------------- |
+| ![Coral Coast](docs/screenshots/course-coral-coast.jpg)     | ![Ember Mesa](docs/screenshots/course-ember-mesa.jpg)         |
+
+On Coral Coast the water counts as ground: skimming it is a scrape, diving into it a crash.
 
 ### Controls
 
@@ -80,9 +98,10 @@ first race and is always reachable from the garage). **Race again** sits at the 
   two, and the Vantage Pulse Drive after a podium finish. Liveries are free.
 - Opponent skill ramps up with your wins so the starter aircraft can reach the podium and an
   upgraded one still gets a fight.
-- Credits, owned parts, installed build, best time, best style, badges, settings and race history
-  persist in `localStorage`; malformed or missing saves fall back to safe defaults. Saves from before
-  style scoring load unchanged, with the new fields defaulted.
+- Credits, owned parts, installed build, selected course, best time per course, best style, badges,
+  settings and race history persist in `localStorage`; malformed or missing saves fall back to safe
+  defaults. Saves from before style scoring load unchanged, with the new fields defaulted; a best time
+  saved before multiple courses becomes the Caldera Ridge best.
 
 ## Development
 
@@ -103,13 +122,13 @@ Playwright suite. It is never active in the normal experience.
 src/
   aircraft/      parts catalogue, build validation, performance derivation
   flight/        simcade flight model (pure, fixed-step, allocation-free)
-  course/        procedural terrain, circuit definition, gate plane/bounds validation
+  course/        course specs, themes (art direction data), procedural terrain, gate validation
   ai/            waypoint-following opponent controller and pilot personalities
   race/          race simulation: countdown, timing, gates, penalties, standings
   progression/   profile, purchases, unlock rules, rewards, validated save/load
   controls/      keyboard + touch input, merged input manager
   camera/        chase camera
-  render/        renderer wrapper, world (terrain, sky, gates, landmarks), aircraft model, effects
+  render/        renderer wrapper, world (terrain, sky, water, props, gates, landmarks), aircraft, effects
   audio/         procedural WebAudio engine, boost, gate and UI sounds
   ui/            DOM screens: menu, garage, briefing, HUD, pause, results, overlays
   app/           App state machine, GarageStage, RaceStage
@@ -117,7 +136,8 @@ src/
 
 Gameplay systems are deterministic and framework-free so they are tested directly with Vitest.
 Rendering and DOM are kept out of those modules. The flight model's assumptions are documented in
-[docs/FLIGHT_MODEL.md](docs/FLIGHT_MODEL.md).
+[docs/FLIGHT_MODEL.md](docs/FLIGHT_MODEL.md); how courses and their art direction are built is in
+[docs/COURSES.md](docs/COURSES.md).
 
 ### App icon
 

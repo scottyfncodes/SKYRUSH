@@ -7,6 +7,9 @@ import {
   type Scene,
 } from 'three';
 
+/** Exposure for the garage; each course sets its own while racing. */
+export const DEFAULT_EXPOSURE = 1.05;
+
 export interface RendererOptions {
   shadows: boolean;
   maxPixelRatio: number;
@@ -56,7 +59,7 @@ export class Renderer {
     });
     this.gl.outputColorSpace = SRGBColorSpace;
     this.gl.toneMapping = ACESFilmicToneMapping;
-    this.gl.toneMappingExposure = 1.05;
+    this.gl.toneMappingExposure = DEFAULT_EXPOSURE;
     this.gl.shadowMap.enabled = this.options.shadows;
     this.gl.shadowMap.type = PCFSoftShadowMap;
 

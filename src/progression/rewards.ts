@@ -1,6 +1,7 @@
 import type { AircraftBuild } from '../aircraft/build';
 import type { AircraftPart } from '../aircraft/parts';
-import { newlyUnlockedParts, type PlayerProfile, type RaceRecord, MAX_HISTORY } from './profile';
+import { bestTimeFor, newlyUnlockedParts, type PlayerProfile, type RaceRecord, MAX_HISTORY } from './profile';
+import { DEFAULT_COURSE_ID } from '../course/courses';
 import { BADGES, badgesEarned, nextGoal, type Badge, type NextGoal, type RunStyleStats } from './badges';
 import { styleCredits } from '../style/StyleTracker';
 
@@ -68,7 +69,10 @@ export const applyRaceOutcome = (
   now = new Date(),
 ): AppliedResult => {
   const reward = computeReward(outcome);
-  const newBestTime = profile.bestTime === null || outcome.finishTime < profile.bestTime;
+  const previousBest = bestTimeFor(profile, outcome.circuitId);
+  const newBestTime = previousBest === null || outcome.finishTime < previousBest;
+  // The legacy single best time tracks Caldera Ridge, the only course older saves knew.
+  const legacyBest = outcome.circuitId === DEFAULT_COURSE_ID && newBestTime;
   const record: RaceRecord = {
     circuitId: outcome.circuitId,
     position: outcome.position,
@@ -96,8 +100,11 @@ export const applyRaceOutcome = (
     racesCompleted: profile.racesCompleted + 1,
     podiums: profile.podiums + (outcome.position <= 3 ? 1 : 0),
     wins: profile.wins + (outcome.position === 1 ? 1 : 0),
-    bestTime: newBestTime ? outcome.finishTime : profile.bestTime,
-    bestTimeBuild: newBestTime ? { ...outcome.build } : profile.bestTimeBuild,
+    bestTime: legacyBest ? outcome.finishTime : profile.bestTime,
+    bestTimeBuild: legacyBest ? { ...outcome.build } : profile.bestTimeBuild,
+    bestTimes: newBestTime
+      ? { ...profile.bestTimes, [outcome.circuitId]: outcome.finishTime }
+      : profile.bestTimes,
     history: [record, ...profile.history].slice(0, MAX_HISTORY),
     bestStyle: Math.max(profile.bestStyle, styleScore),
     bestMultiplier: Math.max(profile.bestMultiplier, style?.bestMultiplier ?? 1),

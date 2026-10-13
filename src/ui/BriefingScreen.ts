@@ -1,6 +1,7 @@
 import { Screen, button, clear, h } from './dom';
 import type { Circuit } from '../course/circuit';
-import type { PlayerProfile, PlayerSettings } from '../progression/profile';
+import { bestTimeFor, type PlayerProfile, type PlayerSettings } from '../progression/profile';
+import { createCourseGrid } from './CoursePicker';
 import { AI_PERSONALITIES } from '../ai/AiPilot';
 import { formatRaceTime } from '../core/format';
 import { createSettingsPanel } from './SettingsPanel';
@@ -9,6 +10,7 @@ export interface BriefingCallbacks {
   onStart: () => void;
   onBack: () => void;
   onSettings: (patch: Partial<PlayerSettings>) => void;
+  onSelectCourse: (courseId: string) => void;
 }
 
 export class BriefingScreen extends Screen {
@@ -46,9 +48,20 @@ export class BriefingScreen extends Screen {
         ),
       ),
     );
+    const best = bestTimeFor(profile, circuit.id);
     const card = h(
       'div',
       { className: 'briefing__card' },
+      h(
+        'section',
+        { className: 'briefing__section' },
+        h('h3', { className: 'panel-title', text: 'Course' }),
+        createCourseGrid({
+          selectedId: circuit.id,
+          bestTimes: profile.bestTimes,
+          onSelect: this.callbacks.onSelectCourse,
+        }),
+      ),
       h(
         'div',
         { className: 'briefing__head' },
@@ -70,7 +83,7 @@ export class BriefingScreen extends Screen {
         fact('Length', `${(circuit.length / 1000).toFixed(1)} km`),
         fact('Gates', String(circuit.gates.length)),
         fact('Par', formatRaceTime(circuit.parTime)),
-        fact('Your best', profile.bestTime === null ? '--:--.---' : formatRaceTime(profile.bestTime)),
+        fact('Your best', best === null ? '--:--.---' : formatRaceTime(best)),
       ),
       h(
         'div',

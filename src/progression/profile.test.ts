@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ALL_PARTS, DEFAULT_PART_IDS, getPart } from '../aircraft/parts';
 import { DEFAULT_BUILD } from '../aircraft/build';
 import {
+  bestTimeFor,
+  selectCircuit,
   STARTING_CREDITS,
   createDefaultProfile,
   installPart,
@@ -9,6 +11,7 @@ import {
   newlyUnlockedParts,
   partStatus,
   purchasePart,
+  sanitiseProfile,
   sanitiseSettings,
   setLivery,
   updateSettings,
@@ -243,5 +246,38 @@ describe('settings and livery', () => {
   it('setLivery only changes the livery', () => {
     const next = setLivery(createDefaultProfile(), 'livery-signal');
     expect(next.build).toEqual({ ...DEFAULT_BUILD, livery: 'livery-signal' });
+  });
+});
+
+describe('courses', () => {
+  it('starts on Caldera Ridge with no course best times', () => {
+    const profile = createDefaultProfile();
+    expect(profile.selectedCircuit).toBe('caldera-ridge');
+    expect(profile.bestTimes).toEqual({});
+    expect(bestTimeFor(profile, 'frostline-pass')).toBeNull();
+  });
+
+  it('selectCircuit accepts known courses only and never mutates', () => {
+    const profile = createDefaultProfile();
+    const selected = selectCircuit(profile, 'coral-coast');
+    expect(selected.selectedCircuit).toBe('coral-coast');
+    expect(profile.selectedCircuit).toBe('caldera-ridge');
+    expect(selectCircuit(profile, 'nowhere')).toBe(profile);
+    expect(selectCircuit(profile, 'caldera-ridge')).toBe(profile);
+  });
+
+  it('sanitises course data and migrates the legacy best time to Caldera Ridge', () => {
+    const migrated = sanitiseProfile({ ...createDefaultProfile(), bestTime: 97.5, bestTimes: undefined });
+    expect(migrated.bestTimes).toEqual({ 'caldera-ridge': 97.5 });
+    const repaired = sanitiseProfile({
+      ...createDefaultProfile(),
+      selectedCircuit: 'atlantis',
+      bestTimes: { 'frostline-pass': 101, 'coral-coast': -4, 'ember-mesa': 'fast', moon: 50 },
+    });
+    expect(repaired.selectedCircuit).toBe('caldera-ridge');
+    expect(repaired.bestTimes).toEqual({ 'frostline-pass': 101 });
+    expect(
+      sanitiseProfile({ ...createDefaultProfile(), selectedCircuit: 'ember-mesa' }).selectedCircuit,
+    ).toBe('ember-mesa');
   });
 });
