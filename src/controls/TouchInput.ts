@@ -1,7 +1,11 @@
 import type { FlightInput } from '../flight/FlightModel';
-import { applyDeadzone, clamp } from '../core/math';
+import { applyDeadzone, applyExpo, clamp } from '../core/math';
 
 export type TouchAction = 'pause' | 'recenter';
+
+/** Stick response curve: softens small thumb movements for fine corrections; full deflection is unchanged. */
+export const STICK_EXPO = 0.35;
+const STICK_DEADZONE = 0.08;
 
 /**
  * Landscape touch controls: a virtual stick on the left (pitch/roll), a
@@ -253,8 +257,8 @@ export class TouchInput {
   }
 
   sample(out: FlightInput, options: { invertPitch: boolean; sensitivity: number }): FlightInput {
-    const x = applyDeadzone(this.stickX, 0.08);
-    const y = applyDeadzone(this.stickY, 0.08);
+    const x = applyExpo(applyDeadzone(this.stickX, STICK_DEADZONE), STICK_EXPO);
+    const y = applyExpo(applyDeadzone(this.stickY, STICK_DEADZONE), STICK_EXPO);
     // Stick up (negative y) = nose up unless inverted.
     const pitch = (options.invertPitch ? y : -y) * options.sensitivity;
     out.pitch = clamp(pitch, -1, 1);

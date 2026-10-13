@@ -85,6 +85,11 @@ export const MAX_ASSISTED_BANK = 1.25;
 const ASSISTED_TURN_RATE = 1.15;
 /** Assisted steering: the nose is kept within this pitch angle (≈57°) so the aircraft never loops. */
 const ASSISTED_PITCH_LIMIT = 1.0;
+/** Assisted steering: bank-gain and roll-rate multipliers while rolling back toward wings-level. */
+const ASSISTED_ROLL_OUT_GAIN = 2;
+const ASSISTED_ROLL_OUT_BOOST = 1.5;
+/** Assisted steering: target damping ratio of the bank-angle loop. */
+const ASSISTED_BANK_DAMPING_RATIO = 0.85;
 const _worldYaw = new Quaternion();
 
 const _forward = new Vector3();
@@ -246,8 +251,21 @@ export const stepFlight = (
     // so the aircraft cannot be rolled inverted by holding left or right. A banked
     // aircraft turns on its own (coordinated turn about the world up axis).
     const desiredBank = input.roll * MAX_ASSISTED_BANK;
+    const bankError = desiredBank - state.bank;
+    // Rolling back toward level (release or the first half of a reversal) gets extra gain and
+    // roll rate so the turn stops promptly instead of carrying on while the wings come back.
+    const rollingOut = state.bank * bankError < 0;
+    const rollLimit = params.rollRate * (rollingOut ? ASSISTED_ROLL_OUT_BOOST : 1);
+    const bankGain = 3.2 * (0.6 + 0.4 * stability) * (rollingOut ? ASSISTED_ROLL_OUT_GAIN : 1);
+    // Bank-rate damping, sized so the bank loop (gain + first-order rate lag) settles
+    // without overshoot on every fuselage; the slow-responding frames need the most.
+    const bankDamping = clamp(
+      2 * ASSISTED_BANK_DAMPING_RATIO * Math.sqrt(bankGain / params.responsiveness) - 1,
+      0,
+      0.8,
+    );
     rollTarget =
-      clamp((desiredBank - state.bank) * 3.2 * (0.6 + 0.4 * stability), -params.rollRate, params.rollRate) *
+      clamp(bankError * bankGain - state.rates.z * bankDamping, -rollLimit, rollLimit) *
       authority *
       aoaPenalty;
     const speedFactor = clamp(80 / Math.max(speed, 20), 0.6, 1.15);

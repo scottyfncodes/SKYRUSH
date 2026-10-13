@@ -36,6 +36,15 @@ export const applyDeadzone = (value: number, deadzone: number): number => {
   return Math.sign(value) * ((magnitude - deadzone) / (1 - deadzone));
 };
 
+/**
+ * Blends a linear and a squared response (sign preserved): small deflections are softened
+ * for fine corrections while full deflection still reaches ±1. `expo` 0 is linear.
+ */
+export const applyExpo = (value: number, expo: number): number => {
+  const magnitude = Math.min(Math.abs(value), 1);
+  return Math.sign(value) * magnitude * (1 - expo + expo * magnitude);
+};
+
 export const roundTo = (value: number, decimals: number): number => {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;

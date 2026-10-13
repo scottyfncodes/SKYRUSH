@@ -35,10 +35,36 @@ proportion to the assistance strength, so turns are altitude-neutral, and a smal
 added while banked. Pitch is soft-limited to ±57° so the aircraft cannot loop; the nose always has
 authority back toward level. With the stick centred, pitch settles toward level.
 
+The bank loop is a proportional bank-angle controller feeding the lagged roll rate. Two refinements
+keep it precise without slowing turn-in:
+
+- **Bank-rate damping.** The roll-rate target subtracts `damping × current roll rate`, with damping
+  sized per build for a damping ratio of 0.85 given the bank gain and the fuselage `responsiveness`
+  (capped at 0.8). Quick frames such as the Needle need almost none; the Bastion, whose slower rate
+  response used to overshoot the bank target by 5–7% and swing through level on release, gets the
+  most. The initial roll response is unchanged because the damping term is zero from rest.
+- **Faster roll-out.** While the bank is moving back toward level (stick released, reduced, or the
+  first half of a reversal) the bank gain is doubled and the roll-rate limit raised by 50%, so a
+  turn stops promptly when the stick is released instead of carrying on while the wings come back.
+  Turn-in rate and the 72° bank limit are unchanged.
+
+Default build at 90 m/s, before → after: time to half bank 0.41 s → 0.41 s; full-bank overshoot
+1.7% → 0.5%; wings level after releasing a full-bank turn 0.92 s → 0.74 s; heading carried on after
+release 0.45 → 0.36 rad. On the Bastion a full left/right reversal now settles in 1.4 s instead of
+2.2 s with no overshoot.
+
 ### Direct control (assistance at 0%)
 
 Roll input commands a roll rate, a mild coordinated yaw follows bank, and the aircraft self-levels
 only when the stick is centred. Pitch is unlimited. AI pilots always fly with 60% assistance.
+
+### Input shaping
+
+The touch stick applies a deadzone of 8% followed by a mild response curve
+(`|x| × (0.65 + 0.35 |x|)`), so small thumb movements give fine corrections while full deflection
+still commands full roll or pitch. Keyboard axes ramp toward the pressed direction (6/s) so taps stay
+gentle, and return to centre at 10/s; a reversal also passes back through centre at the 10/s rate.
+Inputs are sampled once per fixed simulation step.
 
 ## Translation
 
