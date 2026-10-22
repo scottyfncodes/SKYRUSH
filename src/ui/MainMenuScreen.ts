@@ -70,7 +70,7 @@ export class MainMenuScreen extends Screen {
     this.stats.append(
       stat('Credits', formatCredits(profile.credits), 'menu-credits'),
       stat('Best time', best === null ? '--:--.---' : formatRaceTime(best), 'menu-best'),
-      stat('Best style', profile.bestStyle > 0 ? formatCredits(profile.bestStyle) : '—', 'menu-style'),
+      stat('Best style', profile.bestStyle > 0 ? formatCredits(profile.bestStyle) : '–', 'menu-style'),
       stat('Races', String(profile.racesCompleted), 'menu-races'),
       stat('Wins', String(profile.wins), 'menu-wins'),
     );

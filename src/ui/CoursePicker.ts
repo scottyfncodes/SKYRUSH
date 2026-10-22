@@ -118,7 +118,7 @@ export interface CourseCardInfo {
 const courseMeta = (course: CourseSpec, bestTimes: Record<string, number>): string => {
   const best = bestTimes[course.id];
   return `${course.character} · Par ${formatShortTime(course.parTime)} · Best ${
-    best === undefined ? '—' : formatShortTime(best)
+    best === undefined ? '–' : formatShortTime(best)
   }`;
 };
 

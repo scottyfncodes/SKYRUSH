@@ -290,7 +290,7 @@ export class RaceStage {
         }
         break;
       case 'wrong-way':
-        if (event.isPlayer) hud.showMessage('WRONG WAY — turn around', 'bad', 2);
+        if (event.isPlayer) hud.showMessage('WRONG WAY: turn around', 'bad', 2);
         break;
       case 'crash': {
         const racer = this.sim.racers.find((r) => r.config.id === event.racerId);
@@ -321,12 +321,12 @@ export class RaceStage {
         break;
       }
       case 'out-of-bounds':
-        if (event.isPlayer) hud.showMessage('OUT OF BOUNDS — returning to course', 'bad', 2.5);
+        if (event.isPlayer) hud.showMessage('OUT OF BOUNDS: returning to course', 'bad', 2.5);
         break;
       case 'overheat':
         if (event.isPlayer) {
           audio.overheat();
-          hud.showMessage('OVERHEATED — boost disabled', 'bad', 2.5);
+          hud.showMessage('OVERHEATED: boost disabled', 'bad', 2.5);
         }
         break;
       case 'scrape':
