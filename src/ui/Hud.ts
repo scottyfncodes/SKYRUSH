@@ -223,9 +223,9 @@ export class Hud {
     this.element.classList.toggle('is-boosting', state.boosting);
 
     const statusText = state.overheated
-      ? 'OVERHEATED — ease off'
+      ? 'OVERHEATED: ease off'
       : state.stalled
-        ? 'STALL — nose down, throttle up'
+        ? 'STALL: nose down, throttle up'
         : state.airbrake
           ? 'AIRBRAKE'
           : '';

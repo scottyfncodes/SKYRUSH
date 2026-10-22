@@ -35,8 +35,11 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
-  --font: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
-  --font-display: 'Inter', 'Segoe UI', -apple-system, Helvetica, Arial, sans-serif;
+  /* System type only (nothing to download on a phone). The display stack reaches for the
+     DIN-style faces each platform ships, which read like cockpit and race-board lettering. */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display:
+    'DIN Alternate', 'Bahnschrift', 'D-DIN', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
@@ -529,8 +532,6 @@ p {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   overflow: hidden;
 }
 .garage-left {
@@ -737,8 +738,6 @@ p {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .detail__tagline {
   display: block;

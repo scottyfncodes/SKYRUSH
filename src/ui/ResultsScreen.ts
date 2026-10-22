@@ -62,7 +62,7 @@ export class ResultsScreen extends Screen {
         h('td', { text: ordinal(s.position) }),
         h('td', { text: s.isPlayer ? 'You' : `${s.callsign} · ${s.name}` }),
         h('td', { text: s.finished ? formatRaceTime(s.finishTime) : 'DNF' }),
-        h('td', { text: s.penaltySeconds > 0 ? `+${s.penaltySeconds}s` : '—' }),
+        h('td', { text: s.penaltySeconds > 0 ? `+${s.penaltySeconds}s` : '–' }),
       ),
     );
     const unlocks =
@@ -72,7 +72,7 @@ export class ResultsScreen extends Screen {
             { className: 'results__unlocks', dataset: { testid: 'results-unlocks' } },
             h('span', { className: 'eyebrow', text: 'Newly unlocked' }),
             ...applied.unlocked.map((part) =>
-              h('span', { className: 'chip', text: `${part.name} — now available to buy` }),
+              h('span', { className: 'chip', text: `${part.name}: now available to buy` }),
             ),
           )
         : null;
@@ -107,7 +107,7 @@ export class ResultsScreen extends Screen {
                   { className: 'badge-earned__text' },
                   h('strong', { text: `Badge earned: ${badge.name}` }),
                   h('span', {
-                    text: ` — ${liveryForBadge(badge.id)?.name ?? 'new'} livery unlocked in the garage`,
+                    text: `. ${liveryForBadge(badge.id)?.name ?? 'new'} livery unlocked in the garage`,
                   }),
                 ),
               ),
@@ -196,8 +196,8 @@ export class ResultsScreen extends Screen {
           h('h3', { className: 'panel-title', text: 'Rewards' }),
           line('Finishing position', `+${formatCredits(reward.base)}`),
           line('Clean run bonus', reward.cleanBonus > 0 ? `+${formatCredits(reward.cleanBonus)}` : 'Missed'),
-          line('Time bonus vs par', reward.timeBonus > 0 ? `+${formatCredits(reward.timeBonus)}` : '—'),
-          line('Style bonus', reward.styleBonus > 0 ? `+${formatCredits(reward.styleBonus)}` : '—'),
+          line('Time bonus vs par', reward.timeBonus > 0 ? `+${formatCredits(reward.timeBonus)}` : '–'),
+          line('Style bonus', reward.styleBonus > 0 ? `+${formatCredits(reward.styleBonus)}` : '–'),
           line(
             'Gate penalties',
             player.missedGates > 0 ? `${player.missedGates} missed (+${player.missedGates * 4}s)` : 'None',
