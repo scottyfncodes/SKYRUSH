@@ -5,6 +5,7 @@ import {
   AIR_DENSITY,
   GRAVITY,
   gripAtSpeed,
+  thrustAtSpeed,
   type FlightParameters,
 } from '../aircraft/performance';
 
@@ -315,7 +316,7 @@ export const stepFlight = (
   getUp(state, _up);
 
   // --- Forces ------------------------------------------------------------------
-  let thrust = params.thrust * state.throttle;
+  let thrust = thrustAtSpeed(params, speed) * state.throttle;
   if (state.boosting) thrust *= params.boostMultiplier;
   if (state.overheated) thrust *= OVERHEAT_THRUST_FACTOR;
   const dragArea = params.dragArea + (state.airbrake ? params.airbrakeDragArea : 0);

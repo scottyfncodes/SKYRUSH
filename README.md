@@ -1,22 +1,24 @@
 # SKYRUSH
 
-**Build a machine. Master the course. Earn better parts. Build something faster.**
+**Collect the aircraft. Tune every part. Fly it flat out.**
 
-SKYRUSH is a browser game about building a custom racing aircraft and flying it flat-out through
-four gated courses against three AI pilots. It runs on desktop browsers and on iPhone Safari in
+SKYRUSH is a browser game about building up a hangar of distinctive propeller aircraft (a nimble
+scout, a sport two-seater, a long-nosed racer, a strutted bush plane, a floatplane and a twin-engined
+cruiser), tuning each one part by part, and flying them flat out through four gated courses against
+three AI pilots. It runs on desktop browsers and on iPhone Safari in
 landscape, needs no account or backend, and deploys as a static site to GitHub Pages.
 
 ![Main menu](docs/screenshots/main-menu.png)
 
 ## Playing
 
-| Screen    | What happens                                                                                                    |
-| --------- | --------------------------------------------------------------------------------------------------------------- |
-| Main menu | Pick a course (‹ ›), credits, best time on that course, race count. Race, Garage, or Controls & Settings.       |
-| Garage    | Swap fuselage, engine and wings; apply a livery; compare every stat against the installed build; buy parts.     |
-| Briefing  | All four courses to choose from, course facts, opponents, control bindings, assistance and sensitivity.         |
-| Race      | 3-2-1 countdown, 14–15 gates, live position, timer, boost and heat, next-gate marker.                           |
-| Results   | Finishing position, time with penalties, reward breakdown, standings, newly unlocked parts. Race again or tune. |
+| Screen    | What happens                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------- |
+| Main menu | The aircraft you fly, course picker (‹ ›), credits, best time. Race, Hangar, or Controls & Settings.             |
+| Hangar    | Choose an aircraft, preview and fit parts in six slots, paint it, save setups; compare everything before buying. |
+| Briefing  | All four courses to choose from, course facts, opponents, control bindings, assistance and sensitivity.          |
+| Race      | 3-2-1 countdown, 14–15 gates, live position, timer, boost and heat, next-gate marker.                            |
+| Results   | Finishing position, time with penalties, reward breakdown, standings, newly unlocked parts. Race again or tune.  |
 
 ### Courses
 
@@ -80,28 +82,40 @@ breaks the chain. Near misses need the aircraft to come down from above 15 m, pa
 never pay if the ground was touched, and have a 2.5 s cooldown, so they cannot be farmed. Style pays up
 to +500 credits per race (score ÷ 25).
 
-**Badges** unlock cosmetic liveries with matching contrails: Ring Runner (all six rings in a race →
-Aurora Ring), Bullseye (8 perfect gates → Solar Bullseye), Canyon Skimmer (6 near misses → Canyon
-Skimmer) and Combo King (reach ×4 → Neon Rush). The results screen shows the run's highlights and
+**Badges** each unlock a paint colour and a livery theme with a matching contrail: Ring Runner (all six
+rings in a race → Aurora Mint), Bullseye (8 perfect gates → Solar Gold), Canyon Skimmer (6 near misses →
+Dune Copper) and Combo King (reach ×4 → Neon Rose). A 3,000-point style run also unlocks the Scimitar
+racing propeller. The results screen shows the run's highlights and
 progress toward the closest unearned badge.
 
 Returning players go straight from **Race** on the menu to the grid (the briefing is shown before the
 first race and is always reachable from the garage). **Race again** sits at the top of the results;
 `Enter` also replays.
 
-### Progression
+### Hangar, aircraft and progression
 
-- You start with 2,500 credits and the Meridian / Kestrel Turbine / Crescent Balanced build.
-- Rewards: 1,500 / 1,000 / 700 / 500 credits for 1st–4th, +300 for a clean run (no missed gates,
-  no crashes), and up to +600 for beating the 1:45 par time.
-- Parts cost 1,500–3,400 credits. The Tandem Twin unlocks after one race, the Bastion frame after
-  two, and the Vantage Pulse Drive after a podium finish. Liveries are free.
+Six aircraft, each with its own silhouette, handling and factory parts, and six part slots (frame,
+engine, propeller, wings, tail, gear) whose parts change both the model and the flight parameters.
+Not every part fits every aircraft; the hangar says which aircraft take a part when it will not fit.
+The full roster, every part's trade-off and the unlock schedule are in
+[docs/AIRCRAFT.md](docs/AIRCRAFT.md).
+
+- You start with 2,500 credits and the Meridian. Rewards: 1,500 / 1,000 / 700 / 500 credits for
+  1st–4th, +300 for a clean run, up to +600 for beating par and up to +500 for style.
+- Each of the first four races unlocks new aircraft or parts; a podium opens the Needle racer and the
+  Pulse Drive. Upgrade paths (for example Kestrel Inline → Kestrel Sport → Hornet Supercharged) need
+  the previous part first.
+- Previewing is always free. Buying a part fits it to the aircraft on the stand; buying an aircraft
+  plays its reveal. Revert restores the aircraft as it was when you opened the hangar. Setups save
+  parts and paint together, and each aircraft keeps its own build when you switch.
+- The paint shop has curated swatches, patterns, insignia, a race number and themes such as Vintage
+  Air-Racer, Coastal Rescue, Alpine Survey and Desert Courier. Paint is free and never affects flight;
+  skill badges unlock extra colours and themes.
 - Opponent skill ramps up with your wins so the starter aircraft can reach the podium and an
   upgraded one still gets a fight.
-- Credits, owned parts, installed build, selected course, best time per course, best style, badges,
-  settings and race history persist in `localStorage`; malformed or missing saves fall back to safe
-  defaults. Saves from before style scoring load unchanged, with the new fields defaulted; a best time
-  saved before multiple courses becomes the Caldera Ridge best.
+- Credits, aircraft, parts, every aircraft's build and paint, setups, selected course, best times,
+  badges, settings and race history persist in `localStorage`. Version 1 saves are migrated on load
+  without losing progress; malformed saves fall back to safe defaults.
 
 ## Development
 
@@ -120,7 +134,7 @@ Playwright suite. It is never active in the normal experience.
 
 ```
 src/
-  aircraft/      parts catalogue, build validation, performance derivation
+  aircraft/      catalogue (airframes and parts), builds and compatibility, paint, setups, performance
   flight/        simcade flight model (pure, fixed-step, allocation-free)
   course/        course specs, themes (art direction data), procedural terrain, gate validation
   ai/            waypoint-following opponent controller and pilot personalities
@@ -128,9 +142,10 @@ src/
   progression/   profile, purchases, unlock rules, rewards, validated save/load
   controls/      keyboard + touch input, merged input manager
   camera/        chase camera
-  render/        renderer wrapper, world (terrain, sky, water, props, gates, landmarks), aircraft, effects
+  render/        renderer wrapper, world (terrain, sky, water, props, gates, landmarks), effects
+  render/aircraft/  procedural aircraft: sculpted bodies, lofted surfaces, livery textures
   audio/         procedural WebAudio engine, boost, gate and UI sounds
-  ui/            DOM screens: menu, garage, briefing, HUD, pause, results, overlays
+  ui/            DOM screens: menu, hangar, briefing, HUD, pause, results, overlays
   app/           App state machine, GarageStage, RaceStage
 ```
 

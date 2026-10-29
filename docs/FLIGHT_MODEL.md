@@ -70,10 +70,13 @@ Inputs are sampled once per fixed simulation step.
 
 Forces per step:
 
-- thrust along the nose: `throttle × engine thrust`, × boost multiplier while boosting, × 0.55 while
-  overheated;
+- thrust along the nose: `throttle × engine thrust × prop efficiency × prop curve`, × boost
+  multiplier while boosting, × 0.55 while overheated. The propeller curve is
+  `max(0.3, 1 + bias × (1 − v / 100 m/s))`: a positive bias (four-blade, paddle) pulls harder at low
+  speed and fades at high speed, a negative bias (coarse two-blade, scimitar) trades low-speed pull
+  for top speed. The standard three-blade has no bias, so the starter build flies exactly as before;
 - drag opposite to velocity: `½ ρ (dragArea + airbrake area) v²`, with `dragArea` the sum of the
-  fuselage, engine and wing values;
+  airframe, engine, propeller(s), wing (scaled by the airframe's wing size), tail and gear values;
 - gravity;
 - lift along body-up: `g × min(1, (v / stall speed)²)`. Above stall speed lift exactly cancels
   gravity in level flight, so the aircraft goes where it points; banked or inverted it sinks.
@@ -117,3 +120,26 @@ past its last gate, facing the next one, at 62 m/s. A soft ceiling at 900 m damp
 | Boost       | 5.5 s    |
 
 The ideal AI lap on the default build is ~100 s; the circuit par time is 105 s.
+
+## How parts become parameters
+
+Every number comes from `src/aircraft/parts.ts` through `computeFlightParameters` in
+`src/aircraft/performance.ts`; paint is never read. In short:
+
+| Parameter      | Built from                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| mass           | airframe × frame mass factor + engine + propeller(s) + wings × wing scale² + tail + gear |
+| drag area      | airframe + engine + propeller(s) + wings × wing scale² + tail + gear                     |
+| lift area      | wings × wing scale² (sets stall speed)                                                   |
+| thrust, curve  | engine thrust × prop efficiency, prop bias                                               |
+| pitch rate     | airframe × tail pitch factor, softened by mass                                           |
+| roll rate      | wings × airframe roll factor ÷ √wing scale (big wings damp roll)                         |
+| responsiveness | airframe × frame × tail, the product clamped to ±15%                                     |
+| stability      | airframe + wings + tail + frame, halved beyond 0.6–1.3, clamped to 0.4–2                 |
+| durability     | airframe + frame + gear, halved beyond 0.5–1.4 (scrape tolerance is `9 √durability` m/s) |
+| heat, boost    | engine, with the airframe's cooling bonus                                                |
+
+Stability and durability use diminishing returns so stacking the steadiest or toughest parts never
+runs away. The hangar's flight card shows ratings measured from these parameters: top speed (thrust
+= drag), 0–250 km/h time, steady climb gradient at 200 km/h, coasting deceleration at 320 km/h,
+roll rate, turning, stability, stall speed, boost before overheating and scrape tolerance.

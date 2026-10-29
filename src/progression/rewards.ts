@@ -1,5 +1,5 @@
 import type { AircraftBuild } from '../aircraft/build';
-import type { AircraftPart } from '../aircraft/parts';
+import type { ShopItem } from '../aircraft/parts';
 import { bestTimeFor, newlyUnlockedParts, type PlayerProfile, type RaceRecord, MAX_HISTORY } from './profile';
 import { DEFAULT_COURSE_ID } from '../course/courses';
 import { BADGES, badgesEarned, nextGoal, type Badge, type NextGoal, type RunStyleStats } from './badges';
@@ -53,7 +53,8 @@ export interface AppliedResult {
   profile: PlayerProfile;
   reward: RewardBreakdown;
   newBestTime: boolean;
-  unlocked: AircraftPart[];
+  /** Aircraft and parts whose unlock rule this race satisfied. */
+  unlocked: ShopItem[];
   record: RaceRecord;
   newBestStyle: boolean;
   /** Badges earned by this race (each unlocks a livery). */

@@ -1,5 +1,7 @@
 import { Screen, button, clear, h } from './dom';
-import { bestTimeFor, type PlayerProfile } from '../progression/profile';
+import { activeBuild, bestTimeFor, type PlayerProfile } from '../progression/profile';
+import { getAirframe } from '../aircraft/parts';
+import { buildCharacter, performanceForBuild } from '../aircraft/performance';
 import { formatCredits, formatRaceTime } from '../core/format';
 import { getCourseSpec } from '../course/courses';
 import { createCourseSelector } from './CoursePicker';
@@ -15,31 +17,34 @@ export class MainMenuScreen extends Screen {
   private readonly stats: HTMLDivElement;
   private readonly course: HTMLDivElement;
   private readonly footer: HTMLDivElement;
+  private readonly aircraft: HTMLDivElement;
 
   constructor(private readonly callbacks: MainMenuCallbacks) {
     super('screen--menu', 'main-menu');
     this.stats = h('div', { className: 'menu-stats' });
     this.course = h('div', { className: 'menu-course' });
     this.footer = h('div', { className: 'menu-footer', dataset: { testid: 'menu-footer' } });
+    this.aircraft = h('div', { className: 'menu-aircraft', dataset: { testid: 'menu-aircraft' } });
     const panel = h(
       'div',
       { className: 'menu-panel' },
       h(
         'div',
         { className: 'brand' },
-        h('span', { className: 'brand__eyebrow', text: 'Experimental Aircraft Championship' }),
+        h('span', { className: 'brand__eyebrow', text: 'Coast · Canyon · Alpine Air Races' }),
         h('h1', { className: 'brand__title', text: 'SKYRUSH' }),
         h('p', {
           className: 'brand__tagline',
-          text: 'Build a machine. Master the course. Build something faster.',
+          text: 'Collect the aircraft, tune every part, then fly it flat out.',
         }),
       ),
+      this.aircraft,
       this.course,
       h(
         'div',
         { className: 'menu-actions' },
         button('Race', callbacks.onRace, { variant: 'primary', testId: 'menu-race' }),
-        button('Garage', callbacks.onGarage, { testId: 'menu-garage' }),
+        button('Hangar', callbacks.onGarage, { testId: 'menu-garage' }),
         button('Controls & Settings', callbacks.onControls, { variant: 'ghost', testId: 'menu-controls' }),
       ),
       this.stats,
@@ -48,6 +53,19 @@ export class MainMenuScreen extends Screen {
   }
 
   update(profile: PlayerProfile): void {
+    const build = activeBuild(profile);
+    const airframe = getAirframe(build.airframe);
+    clear(this.aircraft);
+    if (airframe) {
+      this.aircraft.append(
+        h('span', { className: 'menu-aircraft__label', text: 'Flying' }),
+        h('span', { className: 'menu-aircraft__name', text: airframe.name }),
+        h('span', {
+          className: 'menu-aircraft__meta',
+          text: `${airframe.archetype} · ${buildCharacter(performanceForBuild(build)).label}`,
+        }),
+      );
+    }
     const course = getCourseSpec(profile.selectedCircuit);
     this.footer.textContent = course ? `${course.name} · ${course.location}` : '';
     clear(this.course);

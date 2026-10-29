@@ -33,21 +33,33 @@ test.describe('responsive layout', () => {
     expect(overflow).toBeLessThanOrEqual(0);
 
     await page.getByTestId('menu-garage').click();
-    await expectInsideViewport(page, page.getByTestId('garage-tab-livery'), 'livery tab');
+    await expectInsideViewport(page, page.getByTestId('garage-tab-setups'), 'setups tab');
     await expectInsideViewport(page, page.getByTestId('garage-race'), 'garage race button');
     await expectInsideViewport(page, page.getByTestId('garage-action'), 'garage action');
-    await expectInsideViewport(page, page.getByTestId('stat-boost-value'), 'boost stat');
+    await expectInsideViewport(page, page.getByTestId('stat-topSpeed-value'), 'top speed stat');
+    await expectInsideViewport(page, page.getByTestId('nameplate-name'), 'aircraft name');
     await expectNoOverlap(
-      page.getByTestId('garage-tab-livery'),
-      page.getByTestId('part-fuselage-needle'),
-      'tabs and part list',
+      page.getByTestId('garage-tab-gear'),
+      page.getByTestId('part-engine-efficient'),
+      'slots and part list',
     );
-    // Tab labels are not clipped.
-    for (const tab of ['fuselage', 'engine', 'wings', 'livery']) {
+    // Section and slot labels are not clipped.
+    for (const tab of ['aircraft', 'parts', 'paint', 'setups']) {
       const clipped = await page
         .getByTestId(`garage-tab-${tab}`)
         .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
       expect(clipped, `${tab} tab label clipped`).toBe(false);
+    }
+    // Every section keeps the page free of horizontal scroll, and touch targets stay comfortable.
+    for (const section of ['aircraft', 'paint', 'setups']) {
+      await page.getByTestId(`garage-tab-${section}`).click();
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(sideways, section).toBeLessThanOrEqual(0);
+    }
+    for (const id of ['swatch-ivory', 'pattern-plain', 'number-up']) {
+      await page.getByTestId('garage-tab-paint').click();
+      const box = (await page.getByTestId(id).boundingBox())!;
+      expect(Math.min(box.width, box.height), `${id} target`).toBeGreaterThanOrEqual(32);
     }
   });
 

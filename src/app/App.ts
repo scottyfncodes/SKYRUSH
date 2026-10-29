@@ -13,17 +13,26 @@ import { ResultsScreen } from '../ui/ResultsScreen';
 import { createFatalScreen, createLoadingScreen, createRotatePrompt } from '../ui/Overlays';
 import { loadProfile, resolveStorage, saveProfile, type StorageLike } from '../progression/save';
 import {
+  activeBuild,
+  activeSetup,
+  applyBuild,
+  deleteSetup,
   installPart,
+  markRevealed,
   purchasePart,
+  saveSetup,
+  selectAircraft,
   selectCircuit,
-  setLivery,
+  setPaint,
   updateSettings,
   type PlayerProfile,
   type PlayerSettings,
+  type PurchaseFailure,
 } from '../progression/profile';
 import { applyRaceOutcome } from '../progression/rewards';
-import { resolveBuild, type AircraftBuild } from '../aircraft/build';
-import type { PartCategory } from '../aircraft/parts';
+import type { AircraftBuild } from '../aircraft/build';
+import { AIRFRAMES, getAirframe, getItem, getPartIn, type PartCategory } from '../aircraft/parts';
+import type { Paint } from '../aircraft/paint';
 import { difficultyMultiplier } from '../ai/AiPilot';
 import type { Standing } from '../race/RaceSimulation';
 import { h } from '../ui/dom';
@@ -46,6 +55,8 @@ export interface TestHarness {
     selectedCircuit: string;
     credits: number;
     build: AircraftBuild;
+    paint: Paint;
+    ownedParts: string[];
     race: null | {
       circuitId: string;
       phase: string;
@@ -65,6 +76,8 @@ export interface TestHarness {
       style: ReturnType<StyleTracker['snapshot']>;
     };
   };
+  /** GPU resources currently allocated (geometries, textures), for leak checks. */
+  getRenderInfo: () => { geometries: number; textures: number };
   setAutopilot: (enabled: boolean) => void;
   setTimeScale: (scale: number) => void;
   simulateToFinish: () => void;
@@ -138,9 +151,16 @@ export class App {
       onBack: () => this.goMenu(),
       onRace: () => this.goBriefing(),
       onInstall: (category, partId) => this.install(category, partId),
-      onPurchase: (partId) => this.purchase(partId),
-      onLivery: (liveryId) => this.applyLivery(liveryId),
-      onPreview: (build) => this.garageStage.setBuild(resolveBuild(build)),
+      onPurchase: (id) => this.purchase(id),
+      onSelectAircraft: (id) => this.chooseAircraft(id),
+      onPaint: (paint) => this.applyPaint(paint),
+      onRevert: () => this.revert(),
+      onApplyBuild: (build, paint) => this.applySetup(build, paint),
+      onSaveSetup: (name) => this.saveCurrentSetup(name),
+      onDeleteSetup: (id) => this.removeSetup(id),
+      onPreview: (setup) => this.garageStage.setSetup(setup),
+      onFocus: (focus) => this.garageStage.setFocus(focus),
+      onRevealDone: () => this.garageStage.setFocus('overview'),
     });
     this.briefing = new BriefingScreen(
       {
@@ -245,7 +265,7 @@ export class App {
       );
       return false;
     }
-    this.garageStage = new GarageStage(resolveBuild(this.profile.build), this.renderer);
+    this.garageStage = new GarageStage(activeSetup(this.profile), this.renderer);
     this.loading?.remove();
     this.loading = null;
     this.goMenu();
@@ -333,7 +353,8 @@ export class App {
   goMenu(): void {
     this.disposeRace();
     this.garageStage.focusOffset = 0;
-    this.garageStage.setBuild(resolveBuild(this.profile.build));
+    this.garageStage.setSetup(activeSetup(this.profile));
+    this.garageStage.setFocus('overview');
     this.setScreen('menu');
     this.menu.update(this.profile);
     this.menu.show();
@@ -342,9 +363,9 @@ export class App {
   goGarage(): void {
     this.disposeRace();
     this.garageStage.focusOffset = 0;
-    this.garageStage.setBuild(resolveBuild(this.profile.build));
+    this.garageStage.setSetup(activeSetup(this.profile));
     this.setScreen('garage');
-    this.garage.update(this.profile);
+    this.garage.open(this.profile);
     this.garage.show();
   }
 
@@ -356,7 +377,8 @@ export class App {
 
   goBriefing(): void {
     this.disposeRace();
-    this.garageStage.setBuild(resolveBuild(this.profile.build));
+    this.garageStage.setSetup(activeSetup(this.profile));
+    this.garageStage.setFocus('overview');
     this.setScreen('briefing');
     this.briefing.update(this.circuit, this.profile);
     this.briefing.show();
@@ -370,38 +392,119 @@ export class App {
 
   // --- Garage actions ------------------------------------------------------------------
 
-  private install(category: PartCategory, partId: string): void {
-    const result = installPart(this.profile, category, partId);
-    if (result.ok) {
-      this.profile = result.profile;
-      this.persist();
-      this.garage.update(this.profile);
-      this.garageStage.setBuild(resolveBuild(this.profile.build));
-      this.audio.uiClick();
-    }
-  }
-
-  private purchase(partId: string): void {
-    const result = purchasePart(this.profile, partId);
-    if (!result.ok) return;
-    this.profile = result.profile;
-    // Installing a freshly bought part is what players expect.
-    const part = resolveBuildCategory(partId);
-    if (part) {
-      const installed = installPart(this.profile, part, partId);
-      if (installed.ok) this.profile = installed.profile;
-    }
+  /** Re-renders the hangar and its 3D aircraft from the saved profile. */
+  private refreshGarage(): void {
     this.persist();
     this.garage.update(this.profile);
-    this.garageStage.setBuild(resolveBuild(this.profile.build));
+    this.garageStage.setSetup(this.garage.previewSetup());
+  }
+
+  private install(category: PartCategory, partId: string): void {
+    const result = installPart(this.profile, category, partId);
+    if (!result.ok) {
+      this.garage.flash(`Could not fit that part (${result.reason.replace('-', ' ')})`, 'bad');
+      return;
+    }
+    this.profile = result.profile;
+    this.refreshGarage();
+    this.audio.uiClick();
+    const part = getPartIn(category, partId);
+    const airframe = getAirframe(this.profile.activeAircraft);
+    if (part && airframe) this.garage.flash(`${part.name} fitted to the ${airframe.name}`, 'good');
+  }
+
+  private purchase(id: string): void {
+    const result = purchasePart(this.profile, id);
+    if (!result.ok) {
+      this.garage.flash(PURCHASE_FAILURES[result.reason], 'bad');
+      return;
+    }
+    this.profile = result.profile;
+    const item = getItem(id);
+    if (item?.kind === 'airframe') {
+      this.profile = markRevealed(selectAircraft(this.profile, id), id);
+      this.refreshGarage();
+      this.garageStage.playReveal();
+      this.garage.showReveal(item);
+      this.audio.personalBest();
+      return;
+    }
+    // A freshly bought part goes straight onto the active aircraft.
+    if (item?.kind === 'part') {
+      const installed = installPart(this.profile, item.category, id);
+      if (installed.ok) this.profile = installed.profile;
+    }
+    this.refreshGarage();
+    this.audio.uiClick();
+    const airframe = getAirframe(this.profile.activeAircraft);
+    const firstUpgrade = boughtParts(this.profile).length === 1;
+    if (item && airframe)
+      this.garage.flash(
+        firstUpgrade
+          ? `First upgrade fitted. Take the ${airframe.name} up and feel the difference.`
+          : `${item.name} bought and fitted to the ${airframe.name}`,
+        'good',
+      );
+  }
+
+  private chooseAircraft(id: string): void {
+    const next = selectAircraft(this.profile, id);
+    if (next === this.profile) return;
+    this.profile = next;
+    this.refreshGarage();
     this.audio.uiClick();
   }
 
-  private applyLivery(liveryId: string): void {
-    this.profile = setLivery(this.profile, liveryId);
-    this.persist();
-    this.garage.update(this.profile);
-    this.garageStage.setBuild(resolveBuild(this.profile.build));
+  private applyPaint(paint: Paint): void {
+    const next = setPaint(this.profile, paint);
+    if (next === this.profile) {
+      this.garage.flash('That colour is not unlocked yet', 'bad');
+      return;
+    }
+    this.profile = next;
+    this.refreshGarage();
+  }
+
+  private applySetup(build: AircraftBuild, paint?: Paint): void {
+    const result = applyBuild(this.profile, build, paint);
+    if (!result.ok) {
+      this.garage.flash('Buy the missing parts before applying this setup', 'bad');
+      return;
+    }
+    this.profile = result.profile;
+    this.refreshGarage();
+    this.audio.uiClick();
+    this.garage.flash('Setup applied', 'good');
+  }
+
+  /** Restores the active aircraft to how it was when the hangar was opened. */
+  private revert(): void {
+    const before = this.garage.snapshotFor(this.profile.activeAircraft);
+    if (!before) return;
+    const result = applyBuild(this.profile, before.build, before.paint);
+    if (!result.ok) return;
+    this.profile = result.profile;
+    this.refreshGarage();
+    this.garage.flash('Reverted to how it was when you came in', 'neutral');
+  }
+
+  private saveCurrentSetup(name: string): void {
+    const result = saveSetup(this.profile, name);
+    if (!result.ok) {
+      this.garage.flash(
+        result.reason === 'full' ? 'All setup slots are in use' : 'Give the setup a name',
+        'bad',
+      );
+      return;
+    }
+    this.profile = result.profile;
+    this.refreshGarage();
+    this.garage.flash(`Saved “${result.setup.name}”`, 'good');
+  }
+
+  private removeSetup(id: string): void {
+    this.profile = deleteSetup(this.profile, id);
+    this.refreshGarage();
   }
 
   private changeSettings(patch: Partial<PlayerSettings>): void {
@@ -425,7 +528,7 @@ export class App {
       input: this.input,
       hud: this.hud,
       audio: this.audio,
-      build: this.profile.build,
+      setup: activeSetup(this.profile),
       settings: this.profile.settings,
       aiSkill: difficultyMultiplier(this.profile.wins),
       onPlayerFinished: (standings) => this.finishRace(standings),
@@ -497,7 +600,7 @@ export class App {
       crashes: player.crashes,
       penaltySeconds: player.penaltySeconds,
       parTime: circuit.parTime,
-      build: this.profile.build,
+      build: activeBuild(this.profile),
       style,
     });
     this.profile = applied.profile;
@@ -536,7 +639,9 @@ export class App {
           screen: this.screen,
           selectedCircuit: this.profile.selectedCircuit,
           credits: this.profile.credits,
-          build: { ...this.profile.build },
+          build: { ...activeBuild(this.profile) },
+          paint: { ...activeSetup(this.profile).paint },
+          ownedParts: [...this.profile.ownedParts],
           race:
             stage && player
               ? {
@@ -560,6 +665,10 @@ export class App {
               : null,
         };
       },
+      getRenderInfo: () => ({
+        geometries: this.renderer.gl.info.memory.geometries,
+        textures: this.renderer.gl.info.memory.textures,
+      }),
       setAutopilot: (enabled) => {
         if (this.raceStage) this.raceStage.autopilot = enabled;
       },
@@ -589,9 +698,19 @@ export class App {
   }
 }
 
-const resolveBuildCategory = (partId: string): PartCategory | null => {
-  if (partId.startsWith('fuselage-')) return 'fuselage';
-  if (partId.startsWith('engine-')) return 'engine';
-  if (partId.startsWith('wings-')) return 'wings';
-  return null;
+/** Parts the player bought on their own (not delivered with an aircraft they own). */
+const boughtParts = (profile: PlayerProfile): string[] => {
+  const delivered = new Set(
+    AIRFRAMES.filter((airframe) => profile.ownedParts.includes(airframe.id)).flatMap((airframe) =>
+      Object.values(airframe.defaults),
+    ),
+  );
+  return profile.ownedParts.filter((id) => getItem(id)?.kind === 'part' && !delivered.has(id));
+};
+
+const PURCHASE_FAILURES: Record<PurchaseFailure, string> = {
+  'unknown-part': 'That item is not in the catalogue',
+  'already-owned': 'You already own that',
+  locked: 'That is still locked',
+  'insufficient-credits': 'Not enough credits',
 };

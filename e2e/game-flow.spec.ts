@@ -1,6 +1,8 @@
 import { expect, test, type Locator } from '@playwright/test';
 import {
   collectErrors,
+  openHangar,
+  openSlot,
   tap,
   getState,
   holdKeyForSimSeconds,
@@ -22,85 +24,92 @@ test.describe('SKYRUSH core flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('navigates to the garage and shows the installed build with performance values', async ({ page }) => {
+  test('opens the hangar on the fitted engine with the flight card filled in', async ({ page }) => {
     await openGame(page);
-    await page.getByTestId('menu-garage').click();
-    await expect(page.getByTestId('garage')).toBeVisible();
-    await expect(page.getByTestId('part-fuselage-allrounder')).toHaveAttribute('data-status', 'installed');
+    await openHangar(page);
+    await expect(page.getByTestId('nameplate-name')).toHaveText('Meridian');
+    await expect(page.getByTestId('part-engine-efficient')).toHaveAttribute('data-status', 'installed');
     await expect(page.getByTestId('stat-topSpeed-value')).toHaveText(/\d+ km\/h/);
     await expect(page.getByTestId('stat-boost-value')).toHaveText(/\d+\.\d s/);
-    await expect(page.getByTestId('garage-action')).toHaveText('Installed');
+    await expect(page.getByTestId('garage-action')).toHaveText('Fitted');
     await expect(page.getByTestId('garage-action')).toBeDisabled();
   });
 
-  test('changing parts updates the performance panel and the installed build', async ({ page }) => {
-    await seedProfile(page, {
-      credits: 500,
-      ownedParts: [
-        'fuselage-allrounder',
-        'engine-efficient',
-        'wings-balanced',
-        'wings-compact',
-        'fuselage-needle',
-      ],
-    });
+  test('previewing a part changes the flight card but nothing is charged or fitted until fitting', async ({
+    page,
+  }) => {
+    await seedProfile(page, { credits: 500, ownedParts: ['wings-compact', 'frame-light'] });
     await openGame(page);
-    await page.getByTestId('menu-garage').click();
+    await openHangar(page);
     const topSpeedBefore = await page.getByTestId('stat-topSpeed-value').textContent();
     const massBefore = await page.getByTestId('stat-mass').textContent();
 
-    await page.getByTestId('garage-tab-wings').click();
+    await openSlot(page, 'wings');
     await page.getByTestId('part-wings-compact').click();
-    // Highlighting an owned part previews the comparison before installing.
-    await expect(page.getByTestId('garage-action')).toHaveText('Install');
-    const topSpeedPreview = await page.getByTestId('stat-topSpeed-value').textContent();
-    expect(topSpeedPreview).not.toEqual(topSpeedBefore);
+    // Highlighting an owned part previews the comparison before fitting.
+    await expect(page.getByTestId('garage-action')).toHaveText('Fit to Meridian');
+    expect(await page.getByTestId('stat-topSpeed-value').textContent()).not.toEqual(topSpeedBefore);
+    expect((await getState(page)).build.wings).toBe('wings-balanced');
+    // Previewing a part you do not own is free too.
+    await page.getByTestId('part-wings-highlift').click();
+    await expect(page.getByTestId('garage-action')).toHaveText(/Buy & fit/);
+    await expect(page.getByTestId('garage-credits')).toHaveText('500');
 
+    await page.getByTestId('part-wings-compact').click();
     await page.getByTestId('garage-action').click();
     await expect(page.getByTestId('part-wings-compact')).toHaveAttribute('data-status', 'installed');
-    await expect(page.getByTestId('garage-action')).toHaveText('Installed');
+    await expect(page.getByTestId('garage-action')).toHaveText('Fitted');
     expect(await page.getByTestId('stat-mass').textContent()).not.toEqual(massBefore);
     expect((await getState(page)).build.wings).toBe('wings-compact');
 
-    // Fuselage swap changes stability and turning as well.
-    await page.getByTestId('garage-tab-fuselage').click();
-    await page.getByTestId('part-fuselage-needle').click();
+    await openSlot(page, 'frame');
+    await page.getByTestId('part-frame-light').click();
     await page.getByTestId('garage-action').click();
-    await expect(page.getByTestId('part-fuselage-needle')).toHaveAttribute('data-status', 'installed');
-    expect((await getState(page)).build.fuselage).toBe('fuselage-needle');
+    await expect(page.getByTestId('part-frame-light')).toHaveAttribute('data-status', 'installed');
 
     // The build persists across a reload.
     await page.reload();
     await expect(page.getByTestId('main-menu')).toBeVisible();
-    expect((await getState(page)).build).toMatchObject({
-      fuselage: 'fuselage-needle',
-      wings: 'wings-compact',
-    });
+    expect((await getState(page)).build).toMatchObject({ frame: 'frame-light', wings: 'wings-compact' });
+    expect((await getState(page)).credits).toBe(500);
   });
 
-  test('purchases a component exactly once and explains locked parts', async ({ page }) => {
+  test('buys a part exactly once, and explains locked and incompatible parts', async ({ page }) => {
     await seedProfile(page, { credits: 2000 });
     await openGame(page);
-    await page.getByTestId('menu-garage').click();
-    await page.getByTestId('garage-tab-wings').click();
+    await openHangar(page);
+    await openSlot(page, 'wings');
     await page.getByTestId('part-wings-compact').click();
-    await expect(page.getByTestId('garage-action')).toHaveText(/Buy for 1,500 cr/);
+    await expect(page.getByTestId('garage-action')).toHaveText(/Buy & fit · 1,500 cr/);
     await page.getByTestId('garage-action').click();
     await expect(page.getByTestId('garage-credits')).toHaveText('500');
     await expect(page.getByTestId('part-wings-compact')).toHaveAttribute('data-status', 'installed');
-    await expect(page.getByTestId('garage-action')).toHaveText('Installed');
+    await expect(page.getByTestId('garage-action')).toHaveText('Fitted');
     await expect(page.getByTestId('garage-action')).toBeDisabled();
+    // A stale double-click cannot buy it again.
+    await page.getByTestId('garage-action').click({ force: true });
+    await expect(page.getByTestId('garage-credits')).toHaveText('500');
 
     // Not enough credits for the next set.
     await page.getByTestId('part-wings-highlift').click();
     await expect(page.getByTestId('garage-action')).toBeDisabled();
     await expect(page.getByTestId('garage-note')).toContainText('Need 1,200 more credits');
 
-    // Locked part explains its unlock condition.
-    await page.getByTestId('garage-tab-engine').click();
+    // Locked part explains its unlock condition, an upgrade names its prerequisite.
+    await openSlot(page, 'engine');
     await page.getByTestId('part-engine-pulse').click();
     await expect(page.getByTestId('garage-action')).toHaveText('Locked');
     await expect(page.getByTestId('garage-note')).toContainText('podium');
+    await page.getByTestId('part-engine-hornet').click();
+    await expect(page.getByTestId('garage-note')).toContainText('Kestrel Sport');
+
+    // Floats cannot go on the Meridian, and the hangar says which aircraft take them.
+    await openSlot(page, 'gear');
+    await expect(page.getByTestId('part-gear-floats')).toHaveAttribute('data-status', 'incompatible');
+    await page.getByTestId('part-gear-floats').click();
+    await expect(page.getByTestId('garage-action')).toHaveText('Won’t fit');
+    await expect(page.getByTestId('garage-action')).toBeDisabled();
+    await expect(page.getByTestId('garage-note')).toContainText('Petrel');
 
     await page.reload();
     await expect(page.getByTestId('main-menu')).toBeVisible();
@@ -213,8 +222,9 @@ test.describe('SKYRUSH core flow', () => {
     expect(state.race!.finished).toBe(true);
     expect(state.race!.gatesPassed).toBe(15);
     expect(state.credits).toBeGreaterThan(2500);
-    // Finishing a race unlocks the Tandem Twin for purchase.
+    // Finishing a race unlocks the Tandem Twin and the Mule for purchase.
     await expect(page.getByTestId('results-unlocks')).toContainText('Tandem Twin');
+    await expect(page.getByTestId('results-unlocks')).toContainText('Mule');
 
     // Race again without reloading: a fresh countdown.
     await page.getByTestId('results-again').click();

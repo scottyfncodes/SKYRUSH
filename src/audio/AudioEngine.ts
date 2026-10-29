@@ -1,4 +1,15 @@
 import { clamp01 } from '../core/math';
+import type { EngineSound } from '../aircraft/parts';
+
+const DEFAULT_SOUND: EngineSound = {
+  base: 58,
+  range: 95,
+  wave: 'sawtooth',
+  ratio: 2.01,
+  wave2: 'square',
+  lumpRate: 0,
+  lumpDepth: 0,
+};
 
 /**
  * Procedural WebAudio sound: no external files, nothing licensed, and the game
@@ -15,6 +26,9 @@ export class AudioEngine {
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private boostGain: GainNode | null = null;
+  private lumpOsc: OscillatorNode | null = null;
+  private lumpNode: GainNode | null = null;
+  private sound: EngineSound = DEFAULT_SOUND;
   private enabled = true;
   private engineRunning = false;
   private noise: AudioBuffer | null = null;
@@ -66,8 +80,14 @@ export class AudioEngine {
     return buffer;
   }
 
+  /** Sets the character of the engine note (each engine part has its own); applies on the next start. */
+  setEngineSound(sound: EngineSound): void {
+    this.sound = sound;
+  }
+
   startEngine(): void {
     if (!this.context || !this.master || this.engineRunning) return;
+    const sound = this.sound;
     const ctx = this.context;
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0;
@@ -75,16 +95,28 @@ export class AudioEngine {
     this.engineFilter.type = 'lowpass';
     this.engineFilter.frequency.value = 600;
     this.engineOsc = ctx.createOscillator();
-    this.engineOsc.type = 'sawtooth';
-    this.engineOsc.frequency.value = 70;
+    this.engineOsc.type = sound.wave;
+    this.engineOsc.frequency.value = sound.base;
     this.engineOsc2 = ctx.createOscillator();
-    this.engineOsc2.type = 'square';
-    this.engineOsc2.frequency.value = 141;
+    this.engineOsc2.type = sound.wave2;
+    this.engineOsc2.frequency.value = sound.base * sound.ratio;
     const osc2Gain = ctx.createGain();
     osc2Gain.gain.value = 0.25;
+    // Amplitude lope: radials and the pulse drive thump, twins beat, inlines stay smooth.
+    this.lumpNode = ctx.createGain();
+    this.lumpNode.gain.value = 1 - sound.lumpDepth * 0.5;
     this.engineOsc.connect(this.engineFilter);
     this.engineOsc2.connect(osc2Gain).connect(this.engineFilter);
-    this.engineFilter.connect(this.engineGain).connect(this.master);
+    this.engineFilter.connect(this.lumpNode).connect(this.engineGain).connect(this.master);
+    if (sound.lumpRate > 0 && sound.lumpDepth > 0) {
+      this.lumpOsc = ctx.createOscillator();
+      this.lumpOsc.type = 'sine';
+      this.lumpOsc.frequency.value = sound.lumpRate;
+      const depth = ctx.createGain();
+      depth.gain.value = sound.lumpDepth * 0.5;
+      this.lumpOsc.connect(depth).connect(this.lumpNode.gain);
+      this.lumpOsc.start();
+    }
     this.engineOsc.start();
     this.engineOsc2.start();
 
@@ -121,12 +153,17 @@ export class AudioEngine {
     try {
       this.engineOsc?.stop();
       this.engineOsc2?.stop();
+      this.lumpOsc?.stop();
       this.windNoise?.stop();
     } catch {
       // already stopped
     }
     this.engineOsc?.disconnect();
     this.engineOsc2?.disconnect();
+    this.lumpOsc?.disconnect();
+    this.lumpNode?.disconnect();
+    this.lumpOsc = null;
+    this.lumpNode = null;
     this.engineGain?.disconnect();
     this.windGain?.disconnect();
     this.boostGain?.disconnect();
@@ -142,9 +179,12 @@ export class AudioEngine {
   updateEngine(throttle: number, speed: number, boosting: boolean, overheated: boolean): void {
     if (!this.context || !this.engineRunning) return;
     const t = this.context.currentTime;
-    const base = 55 + throttle * 90 + speed * 60;
+    const sound = this.sound;
+    const base = sound.base + throttle * sound.range + speed * sound.range * 0.65;
     this.engineOsc?.frequency.setTargetAtTime(base, t, 0.08);
-    this.engineOsc2?.frequency.setTargetAtTime(base * 2.01, t, 0.08);
+    this.engineOsc2?.frequency.setTargetAtTime(base * sound.ratio, t, 0.08);
+    // The lope quickens with the revs.
+    this.lumpOsc?.frequency.setTargetAtTime(sound.lumpRate * (0.6 + throttle * 0.8), t, 0.2);
     this.engineFilter?.frequency.setTargetAtTime(400 + throttle * 1400 + (boosting ? 1200 : 0), t, 0.1);
     this.engineGain?.gain.setTargetAtTime((0.12 + throttle * 0.2) * (overheated ? 0.7 : 1), t, 0.1);
     this.windGain?.gain.setTargetAtTime(clamp01(speed) * 0.35, t, 0.15);

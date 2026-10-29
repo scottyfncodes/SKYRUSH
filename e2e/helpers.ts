@@ -2,12 +2,17 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export interface SeedProfile {
   credits?: number;
+  /** Version 1 field names (fuselage-*, engine-*, wings-*) are migrated by the game. */
   ownedParts?: string[];
-  build?: { fuselage: string; engine: string; wings: string; livery: string };
+  activeAircraft?: string;
+  hangar?: Record<string, { build: Record<string, string>; paint?: Record<string, unknown> }>;
   racesCompleted?: number;
   podiums?: number;
   wins?: number;
   bestTime?: number | null;
+  bestStyle?: number;
+  /** Write a version 1 save with this original three-slot build instead. */
+  legacyBuild?: { fuselage: string; engine: string; wings: string; livery: string };
 }
 
 /** Writes a profile into localStorage before the app boots. */
@@ -16,24 +21,31 @@ export const seedProfile = async (page: Page, seed: SeedProfile): Promise<void> 
     // Seed once per browser context so reloads exercise real persistence.
     if (window.localStorage.getItem('skyrush.e2e.seeded') === '1') return;
     window.localStorage.setItem('skyrush.e2e.seeded', '1');
-    const profile = {
-      version: 1,
+    const common = {
       credits: data.credits ?? 2500,
-      ownedParts: data.ownedParts ?? ['fuselage-allrounder', 'engine-efficient', 'wings-balanced'],
-      build: data.build ?? {
-        fuselage: 'fuselage-allrounder',
-        engine: 'engine-efficient',
-        wings: 'wings-balanced',
-        livery: 'livery-ember',
-      },
       bestTime: data.bestTime ?? null,
       bestTimeBuild: null,
       racesCompleted: data.racesCompleted ?? 0,
       podiums: data.podiums ?? 0,
       wins: data.wins ?? 0,
+      bestStyle: data.bestStyle ?? 0,
       history: [],
       settings: { assist: 0.6, invertPitch: false, audio: false, sensitivity: 1 },
     };
+    const profile = data.legacyBuild
+      ? {
+          ...common,
+          version: 1,
+          ownedParts: data.ownedParts ?? ['fuselage-allrounder', 'engine-efficient', 'wings-balanced'],
+          build: data.legacyBuild,
+        }
+      : {
+          ...common,
+          version: 2,
+          ownedParts: data.ownedParts ?? [],
+          activeAircraft: data.activeAircraft ?? 'airframe-sport',
+          hangar: data.hangar ?? {},
+        };
     window.localStorage.setItem('skyrush.profile.v1', JSON.stringify(profile));
   }, seed);
 };
@@ -76,7 +88,17 @@ export const getState = async (page: Page) =>
     screen: string;
     selectedCircuit: string;
     credits: number;
-    build: { fuselage: string; engine: string; wings: string; livery: string };
+    build: {
+      airframe: string;
+      frame: string;
+      engine: string;
+      prop: string;
+      wings: string;
+      tail: string;
+      gear: string;
+    };
+    paint: { primary: string; pattern: string; number: number; accent: string };
+    ownedParts: string[];
     race: RaceState | null;
   }>;
 
@@ -108,6 +130,18 @@ export const holdKeyForSimSeconds = async (page: Page, key: string, seconds: num
   } finally {
     await page.keyboard.up(key);
   }
+};
+
+/** Opens the hangar from the main menu. */
+export const openHangar = async (page: Page): Promise<void> => {
+  await page.getByTestId('menu-garage').click();
+  await expect(page.getByTestId('garage')).toBeVisible();
+};
+
+/** Opens one part slot in the hangar. */
+export const openSlot = async (page: Page, slot: string): Promise<void> => {
+  await page.getByTestId('garage-tab-parts').click();
+  await page.getByTestId(`garage-tab-${slot}`).click();
 };
 
 /** Taps with real touch events (touchstart/touchend), unlike locator.click() which uses the mouse. */
