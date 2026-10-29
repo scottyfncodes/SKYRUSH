@@ -11,6 +11,7 @@ export interface MainMenuCallbacks {
   onSelectCourse: (courseId: string) => void;
   onGarage: () => void;
   onControls: () => void;
+  onRivals: () => void;
 }
 
 export class MainMenuScreen extends Screen {
@@ -45,6 +46,7 @@ export class MainMenuScreen extends Screen {
         { className: 'menu-actions' },
         button('Race', callbacks.onRace, { variant: 'primary', testId: 'menu-race' }),
         button('Hangar', callbacks.onGarage, { testId: 'menu-garage' }),
+        button('Rivals', callbacks.onRivals, { testId: 'menu-rivals' }),
         button('Controls & Settings', callbacks.onControls, { variant: 'ghost', testId: 'menu-controls' }),
       ),
       this.stats,

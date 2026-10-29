@@ -1086,6 +1086,9 @@ p {
   margin-top: 4px;
   color: var(--ivory);
 }
+.nameplate__name--long {
+  font-size: clamp(24px, 3.2vw, 38px);
+}
 .nameplate__character {
   margin-top: 4px;
   font-size: 13px;
@@ -1386,6 +1389,147 @@ p {
   .reveal__name {
     animation: none;
   }
+}
+
+/* --- Rivals ------------------------------------------------------------------------------- */
+
+.screen--rivals {
+  display: block;
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  background: linear-gradient(180deg, rgba(13, 21, 36, 0.94) 0%, rgba(13, 21, 36, 0.86) 100%);
+}
+.rivals {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.rivals__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.rivals__heading {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 40px;
+  line-height: 1;
+}
+.rivals__intro {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 14px;
+  max-width: 60ch;
+}
+.rivals__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.rival-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--ivory);
+  border-radius: var(--radius-m);
+}
+.rival-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.rival-card__callsign {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.24em;
+  color: var(--vermilion);
+}
+.rival-card__temperament {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.rival-card__name {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.rival-card__aircraft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.rival-card__art {
+  width: 74px;
+  height: 28px;
+  flex: none;
+}
+.rival-card__bio {
+  font-size: 13px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.rival-card__quote {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--amber);
+}
+.rival-card__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--space-3);
+  margin: 0;
+  font-size: 13px;
+}
+.rival-card__facts dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-top: 2px;
+}
+.rival-card__facts dd {
+  margin: 0;
+}
+
+.results__challenge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--text-muted);
+  background: rgba(241, 232, 212, 0.05);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+}
+.results__challenge.is-won {
+  border-left-color: var(--amber);
+}
+.results__challenge-outcome {
+  font-family: var(--font-serif);
+  font-size: 20px;
+}
+.results__challenge-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--text-dim);
+}
+.results__challenge .chip {
+  align-self: flex-start;
 }
 
 /* --- Briefing ---------------------------------------------------------------------- */
@@ -2663,6 +2807,21 @@ p {
   .reveal__name {
     font-size: 56px;
   }
+  .rivals__heading {
+    font-size: 28px;
+  }
+  .rivals__intro {
+    font-size: 12px;
+  }
+  .rival-card {
+    padding: var(--space-3);
+  }
+  .rival-card__bio {
+    display: none;
+  }
+  .rival-card__name {
+    font-size: 18px;
+  }
   .briefing__card,
   .dialog {
     padding: var(--space-3) var(--space-4);
@@ -2746,8 +2905,13 @@ p {
 @media (max-width: 720px) {
   .briefing__columns,
   .dialog__columns,
-  .results__grid {
+  .results__grid,
+  .rivals__grid {
     grid-template-columns: 1fr;
+  }
+  .rivals__head {
+    flex-direction: column;
+    gap: var(--space-3);
   }
   .results__head {
     grid-template-columns: auto 1fr;

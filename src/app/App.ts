@@ -10,6 +10,8 @@ import { GarageScreen } from '../ui/GarageScreen';
 import { BriefingScreen } from '../ui/BriefingScreen';
 import { PauseScreen } from '../ui/PauseScreen';
 import { ResultsScreen } from '../ui/ResultsScreen';
+import { RivalsScreen } from '../ui/RivalsScreen';
+import { RIVALS, getRival, rivalLine } from '../progression/rivals';
 import { createFatalScreen, createLoadingScreen, createRotatePrompt } from '../ui/Overlays';
 import { loadProfile, resolveStorage, saveProfile, type StorageLike } from '../progression/save';
 import {
@@ -47,7 +49,8 @@ export type AppScreen =
   | 'race'
   | 'paused'
   | 'results'
-  | 'settings';
+  | 'settings'
+  | 'rivals';
 
 export interface TestHarness {
   getState: () => {
@@ -115,6 +118,9 @@ export class App {
   private readonly pause: PauseScreen;
   private readonly settings: PauseScreen;
   private readonly results: ResultsScreen;
+  private readonly rivals: RivalsScreen;
+  /** Rival id while a one-on-one challenge race is running. */
+  private challenge: string | null = null;
   private loading: HTMLDivElement | null = null;
   private lastFrame = 0;
   private rafId = 0;
@@ -146,6 +152,11 @@ export class App {
       onSelectCourse: (courseId) => this.selectCourse(courseId),
       onGarage: () => this.goGarage(),
       onControls: () => this.goSettings(),
+      onRivals: () => this.goRivals(),
+    });
+    this.rivals = new RivalsScreen({
+      onBack: () => this.goMenu(),
+      onChallenge: (rivalId) => this.startRace(rivalId),
     });
     this.garage = new GarageScreen({
       onBack: () => this.goMenu(),
@@ -202,6 +213,7 @@ export class App {
       this.pause.element,
       this.settings.element,
       this.results.element,
+      this.rivals.element,
     );
     createRotatePrompt(this.ui);
 
@@ -294,6 +306,7 @@ export class App {
       case 'garage':
       case 'briefing':
       case 'settings':
+      case 'rivals':
         this.garageStage.frame =
           this.screen === 'garage'
             ? this.garage.freeArea()
@@ -322,6 +335,7 @@ export class App {
     this.pause.hide();
     this.settings.hide();
     this.results.hide();
+    this.rivals.hide();
     const inRace = screen === 'race';
     this.input.setEnabled(inRace);
     if (inRace) this.hud.show();
@@ -386,6 +400,14 @@ export class App {
     this.setScreen('briefing');
     this.briefing.update(this.circuit, this.profile);
     this.briefing.show();
+  }
+
+  goRivals(): void {
+    this.disposeRace();
+    this.garageStage.setSetup(activeSetup(this.profile));
+    this.setScreen('rivals');
+    this.rivals.update(this.profile);
+    this.rivals.show();
   }
 
   goSettings(): void {
@@ -524,8 +546,13 @@ export class App {
 
   // --- Race flow ------------------------------------------------------------------------
 
-  private startRace(): void {
+  /** Starts a race: the full field, or a one-on-one challenge against one rival. */
+  private startRace(challenge: string | null = null): void {
     this.disposeRace();
+    this.challenge = challenge;
+    const rival = challenge ? getRival(challenge) : RIVALS[this.profile.racesCompleted % RIVALS.length];
+    const record = rival ? this.profile.rivals[rival.id] : undefined;
+    const meetings = (record?.wins ?? 0) + (record?.losses ?? 0) + this.profile.racesCompleted;
     this.raceStage = new RaceStage({
       circuit: this.circuit,
       renderer: this.renderer,
@@ -534,7 +561,12 @@ export class App {
       audio: this.audio,
       setup: activeSetup(this.profile),
       settings: this.profile.settings,
-      aiSkill: difficultyMultiplier(this.profile.wins),
+      // A rival who puts a section on the line flies flat out.
+      aiSkill: challenge
+        ? Math.min(1, difficultyMultiplier(this.profile.wins) + 0.12)
+        : difficultyMultiplier(this.profile.wins),
+      challenge: challenge ?? undefined,
+      gridLine: rival ? { callsign: rival.callsign, text: rivalLine(rival.grid, meetings) } : undefined,
       onPlayerFinished: (standings) => this.finishRace(standings),
     });
     this.audio.unlock();
@@ -566,7 +598,7 @@ export class App {
 
   private raceAgain(): void {
     if (!this.raceStage) {
-      this.startRace();
+      this.startRace(this.challenge);
       return;
     }
     // Difficulty may have changed after a win; the restart picks up the new AI skill.
@@ -606,6 +638,7 @@ export class App {
       parTime: circuit.parTime,
       build: activeBuild(this.profile),
       style,
+      challenge: this.challenge ?? undefined,
     });
     this.profile = applied.profile;
     this.persist();

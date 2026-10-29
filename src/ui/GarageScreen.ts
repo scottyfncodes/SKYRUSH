@@ -3,6 +3,8 @@ import {
   AIRFRAMES,
   CATEGORY_LABELS,
   PART_CATEGORIES,
+  COMPONENT_CATEGORIES,
+  isSectionCategory,
   airframesAccepting,
   describeUnlock,
   getAirframe,
@@ -47,9 +49,13 @@ import {
   type Specialty,
 } from '../aircraft/performance';
 import {
+  CUSTOM_AIRFRAME_ID,
+  buildName,
   defaultBuildFor,
   isValidBuild,
+  sectionSwapCosts,
   withPart,
+  withSection,
   type AircraftBuild,
   type AircraftSetup,
 } from '../aircraft/build';
@@ -204,6 +210,9 @@ export const courseForSpecialty = (specialty: Specialty): string | undefined =>
   COURSES.find((course) => course.character === SPECIALTY_COURSE[specialty])?.name;
 
 const FOCUS_FOR: Record<PartCategory, HangarFocus> = {
+  nose: 'engine',
+  cabin: 'frame',
+  boom: 'tail',
   frame: 'frame',
   engine: 'engine',
   prop: 'prop',
@@ -413,7 +422,9 @@ export class GarageScreen extends Screen {
           : { build: defaultBuildFor(airframe), paint: factoryPaint(airframe.id), marks: profile.wins };
       }
       case 'parts': {
-        const next = withPart(entry.build, this.slot, id);
+        const next = isSectionCategory(this.slot)
+          ? withSection(entry.build, this.slot, id, (part) => profile.ownedParts.includes(part))
+          : withPart(entry.build, this.slot, id);
         return isValidBuild(next) ? { ...base, build: next } : base;
       }
       case 'setups': {
@@ -461,7 +472,11 @@ export class GarageScreen extends Screen {
     this.slots.hidden = this.section !== 'parts';
     if (!profile || this.section !== 'parts') return;
     const entry = activeEntry(profile);
-    for (const category of PART_CATEGORIES) {
+    // Section slots only exist on the Workshop Special; stock aircraft keep their own.
+    const custom = entry.build.airframe === CUSTOM_AIRFRAME_ID;
+    if (!custom && isSectionCategory(this.slot)) this.slot = 'engine';
+    this.slots.classList.toggle('slot-grid--sections', custom);
+    for (const category of custom ? PART_CATEGORIES : COMPONENT_CATEGORIES) {
       const fitted = getPartIn(category, entry.build[category]);
       this.slots.append(
         h(
@@ -533,7 +548,11 @@ export class GarageScreen extends Screen {
             this.card(
               airframe,
               partStatus(profile, airframe),
-              h('span', { className: 'part-card__art' }, airframeSilhouette(airframe.id)),
+              h(
+                'span',
+                { className: 'part-card__art' },
+                airframeSilhouette(airframe.id, profile.hangar[airframe.id]?.build),
+              ),
             ),
           );
         }
@@ -835,7 +854,11 @@ export class GarageScreen extends Screen {
     const course = character.leading[0] ? courseForSpecialty(character.leading[0]) : undefined;
     this.nameplate.append(
       h('span', { className: 'nameplate__type', text: `${airframe.archetype} · ${airframe.designation}` }),
-      h('h2', { className: 'nameplate__name', text: airframe.name, dataset: { testid: 'nameplate-name' } }),
+      h('h2', {
+        className: `nameplate__name${buildName(preview.build).length > 18 ? ' nameplate__name--long' : ''}`,
+        text: buildName(preview.build),
+        dataset: { testid: 'nameplate-name' },
+      }),
       h(
         'span',
         { className: 'nameplate__character', dataset: { testid: 'nameplate-character' } },
@@ -1055,6 +1078,7 @@ export class GarageScreen extends Screen {
               : null,
           ],
           ['Upgrade of', upgradeOf ?? null],
+          ['Also swaps', this.sectionKnockOn(profile, item)],
           ['Suits', suits ?? null],
         ]),
       ),
@@ -1068,6 +1092,15 @@ export class GarageScreen extends Screen {
         revert,
       ),
     );
+  }
+
+  /** For a section on a Workshop Special: the fitted parts the swap would have to replace. */
+  private sectionKnockOn(profile: PlayerProfile, item: ShopItem): string | null {
+    if (item.kind !== 'part' || !isSectionCategory(item.category)) return null;
+    const build = activeEntry(profile).build;
+    if (build[item.category] === item.id) return null;
+    const slots = sectionSwapCosts(build, item.category, item.id, (id) => profile.ownedParts.includes(id));
+    return slots.length ? slots.map((slot) => CATEGORY_LABELS[slot]).join(', ') : null;
   }
 
   private renderStats(): void {

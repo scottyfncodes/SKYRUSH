@@ -222,6 +222,32 @@ export class AudioEngine {
     this.tone(160, 0.3, 'sawtooth', 0.2, 0.12);
   }
 
+  /** An engine blowout: a sharp bang followed by a spluttering cough. */
+  blowout(): void {
+    if (!this.context || !this.master) return;
+    const buffer = this.noiseBuffer();
+    if (!buffer) return;
+    const t = this.context.currentTime;
+    for (const [when, level, cutoff] of [
+      [0, 0.7, 1600],
+      [0.18, 0.35, 700],
+      [0.34, 0.28, 500],
+      [0.55, 0.2, 420],
+    ] as const) {
+      const source = this.context.createBufferSource();
+      source.buffer = buffer;
+      const filter = this.context.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = cutoff;
+      const gain = this.context.createGain();
+      gain.gain.setValueAtTime(level, t + when);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + when + 0.16);
+      source.connect(filter).connect(gain).connect(this.master);
+      source.start(t + when, Math.random() * 1.5);
+      source.stop(t + when + 0.2);
+    }
+  }
+
   crash(): void {
     if (!this.context || !this.master) return;
     const buffer = this.noiseBuffer();

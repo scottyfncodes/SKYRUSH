@@ -54,6 +54,41 @@ improvements.
 Each aircraft keeps its own parts and paint. Buying an aircraft delivers its factory parts; parts
 are owned once and can be fitted to any aircraft that accepts them.
 
+## Workshop Special and sections
+
+Every aircraft is built from three fuselage sections: a nose, a cabin and a tail boom. Owning an
+aircraft gives you its three sections. The Workshop Special (Kitbash X-1, 1,500 credits, opens after
+two races) is a bare jig that takes any nose, cabin and boom you own, so a Needle nose can sit on a
+Mule cabin in front of a Bastion boom. The hangar names the result after its parts (for example
+"Needle–Mule–Bastion Special").
+
+Sections set more than the look. Each one carries part of its donor aircraft's handling: the nose
+leads on cooling and responsiveness, the cabin on mass, drag, roll and toughness, and the boom on
+pitch and stability. Which wings, tails, gear and engines fit also comes from the sections, so a
+racer boom will not take a twin fin. Swapping a section that rules out a fitted part swaps that part
+for one you own that fits, and the hangar lists those knock-on swaps before you commit.
+
+Three sections are not in any showroom. Each rival stakes one in a challenge race (see below).
+
+## Rivals
+
+The Rivals screen lists three named pilots, each with a temperament, a record against you and a
+section at stake. A challenge is one on one on your selected course against a slightly sharper
+version of that pilot, who has a line for the grid and another for the finish.
+
+| Rival          | Callsign | Flies    | Stakes            |
+| -------------- | -------- | -------- | ----------------- |
+| Mira Castellan | ORBIT    | Meridian | Mule Cabin        |
+| Dax Reyes      | VANDAL   | Wren     | Needle Nose       |
+| Jun Okafor     | LONGSHOT | Bastion  | Bastion Tail Boom |
+
+Beat them once to win the section; the record keeps counting after that.
+
+## Engine strain
+
+Engines smoke as heat builds. Run one into the red and it blows: a burst of smoke, a bang, and a
+limp home on reduced power until it cools. The Thunderpod Twin pulls hardest and blows soonest.
+
 ## Parts
 
 Every part names its role, what it is best at and what it costs you. Upgrade paths need the
@@ -73,15 +108,16 @@ Lightweight → Composite Shell.
 
 ### Engine
 
-| Part                 | Role        | Best at                          | Trade-off                              | Price | Unlock                              | Fits                            | On the aircraft                                    |
-| -------------------- | ----------- | -------------------------------- | -------------------------------------- | ----- | ----------------------------------- | ------------------------------- | -------------------------------------------------- |
-| Kestrel Inline       | All-rounder | Cool running, long boost         | Modest thrust                          | Free  | Factory                             | All                             | Pointed cowl, three exhaust stacks a side          |
-| Kestrel Sport        | Speed       | More thrust than the Kestrel     | Runs warmer, shorter boost             | 1,800 | after Kestrel Inline                | All                             | Six short ejector stacks a side                    |
-| Hornet Supercharged  | Speed       | Highest single-engine thrust     | Hot, heavy, short boost                | 3,200 | Finish 3 races, after Kestrel Sport | All                             | Supercharger scoop on the cowl, six stacks a side  |
-| Albatross Long-Range | Endurance   | Longest, fastest-refilling boost | Lowest peak thrust of the Kestrel line | 1,900 | after Kestrel Inline                | All                             | Long cowl with flame-damper pipes along the flanks |
-| Wasp Radial          | Agility     | Very light, spools fast          | Least thrust                           | 1,300 | Shop                                | All                             | Ring cowl with exposed cylinder heads              |
-| Tandem Twin          | Speed       | Most thrust in the hangar        | Heavy, heats quickly                   | 2,600 | Finish 1 race                       | Meridian, Mule, Petrel, Bastion | Two nacelles on the wings and a faired nose        |
-| Vantage Pulse Drive  | Boost       | Strongest boost by far           | Very hot, very short boost             | 3,400 | Finish on the podium once           | Meridian, Wren, Needle          | Banded cowl and two glowing combustor cans         |
+| Part                 | Role        | Best at                          | Trade-off                              | Price | Unlock                              | Fits                                              | On the aircraft                                    |
+| -------------------- | ----------- | -------------------------------- | -------------------------------------- | ----- | ----------------------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| Kestrel Inline       | All-rounder | Cool running, long boost         | Modest thrust                          | Free  | Factory                             | All                                               | Pointed cowl, three exhaust stacks a side          |
+| Kestrel Sport        | Speed       | More thrust than the Kestrel     | Runs warmer, shorter boost             | 1,800 | after Kestrel Inline                | All                                               | Six short ejector stacks a side                    |
+| Hornet Supercharged  | Speed       | Highest single-engine thrust     | Hot, heavy, short boost                | 3,200 | Finish 3 races, after Kestrel Sport | All                                               | Supercharger scoop on the cowl, six stacks a side  |
+| Albatross Long-Range | Endurance   | Longest, fastest-refilling boost | Lowest peak thrust of the Kestrel line | 1,900 | after Kestrel Inline                | All                                               | Long cowl with flame-damper pipes along the flanks |
+| Wasp Radial          | Agility     | Very light, spools fast          | Least thrust                           | 1,300 | Shop                                | All                                               | Ring cowl with exposed cylinder heads              |
+| Tandem Twin          | Speed       | Most thrust in the hangar        | Heavy, heats quickly                   | 2,600 | Finish 1 race                       | Meridian, Mule, Petrel, Bastion                   | Two nacelles on the wings and a faired nose        |
+| Vantage Pulse Drive  | Boost       | Strongest boost by far           | Very hot, very short boost             | 3,400 | Finish on the podium once           | Meridian, Wren, Needle                            | Banded cowl and two glowing combustor cans         |
+| Thunderpod Twin      | Speed       | The biggest thrust you can fit   | Very heavy, runs hot, slow to turn     | 4,600 | Finish 2 races                      | Meridian, Mule, Petrel, Bastion, Workshop Special | Two huge pods on outriggers with intake scoops     |
 
 ### Propeller
 
@@ -152,4 +188,6 @@ Saves stay in `localStorage` under the original key. Version 2 stores every airc
 paint, saved setups and which reveals have been seen. Version 1 saves are migrated on load: the
 original fuselages become the Meridian, Needle and Bastion, owned parts carry over, the installed
 build and livery go onto the matching aircraft, and history and best-time builds are converted
-rather than dropped. Anything malformed is repaired slot by slot.
+rather than dropped. Anything malformed is repaired slot by slot. Saves made before sections
+existed gain each aircraft's own sections on load, and the record against each rival is stored
+alongside.

@@ -97,6 +97,9 @@ first race and is always reachable from the garage). **Race again** sits at the 
 Six aircraft, each with its own silhouette, handling and factory parts, and six part slots (frame,
 engine, propeller, wings, tail, gear) whose parts change both the model and the flight parameters.
 Not every part fits every aircraft; the hangar says which aircraft take a part when it will not fit.
+Every aircraft also breaks down into a nose, cabin and tail boom: the Workshop Special takes any
+sections you own and flies like the mix you bolt together. Three rival pilots stake a section each
+in one-on-one challenge races, and engines smoke and blow when you push them too hot.
 The full roster, every part's trade-off and the unlock schedule are in
 [docs/AIRCRAFT.md](docs/AIRCRAFT.md).
 

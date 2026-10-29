@@ -20,6 +20,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Tuned engine, clipped wings and a V-tail for flat-out courses',
     build: {
       airframe: 'airframe-sport',
+      nose: 'nose-sport',
+      cabin: 'cabin-sport',
+      boom: 'boom-sport',
       frame: 'frame-standard',
       engine: 'engine-tuned',
       prop: 'prop-two',
@@ -34,6 +37,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Four blades and a light frame to haul up mountain passes',
     build: {
       airframe: 'airframe-sport',
+      nose: 'nose-sport',
+      cabin: 'cabin-sport',
+      boom: 'boom-sport',
       frame: 'frame-light',
       engine: 'engine-efficient',
       prop: 'prop-four',
@@ -48,6 +54,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Big tail and high-lift wings: hard to upset, easy to fly',
     build: {
       airframe: 'airframe-sport',
+      nose: 'nose-sport',
+      cabin: 'cabin-sport',
+      boom: 'boom-sport',
       frame: 'frame-reinforced',
       engine: 'engine-albatross',
       prop: 'prop-three',
@@ -63,6 +72,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Fabric frame and a V-tail for the tightest lines',
     build: {
       airframe: 'airframe-scout',
+      nose: 'nose-scout',
+      cabin: 'cabin-scout',
+      boom: 'boom-scout',
       frame: 'frame-light',
       engine: 'engine-wasp',
       prop: 'prop-three',
@@ -77,6 +89,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'A Kestrel Sport up front turns the Wren into a sprinter',
     build: {
       airframe: 'airframe-scout',
+      nose: 'nose-scout',
+      cabin: 'cabin-scout',
+      boom: 'boom-scout',
       frame: 'frame-standard',
       engine: 'engine-tuned',
       prop: 'prop-two',
@@ -92,6 +107,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Supercharged with scimitar blades: speed above all',
     build: {
       airframe: 'airframe-racer',
+      nose: 'nose-racer',
+      cabin: 'cabin-racer',
+      boom: 'boom-racer',
       frame: 'frame-composite',
       engine: 'engine-hornet',
       prop: 'prop-scimitar',
@@ -106,6 +124,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Conventional tail and an elliptical wing for a calmer ride',
     build: {
       airframe: 'airframe-racer',
+      nose: 'nose-racer',
+      cabin: 'cabin-racer',
+      boom: 'boom-racer',
       frame: 'frame-reinforced',
       engine: 'engine-efficient',
       prop: 'prop-three',
@@ -121,6 +142,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Paddle prop and tundra tyres for ridge-hopping',
     build: {
       airframe: 'airframe-bush',
+      nose: 'nose-bush',
+      cabin: 'cabin-bush',
+      boom: 'boom-bush',
       frame: 'frame-reinforced',
       engine: 'engine-efficient',
       prop: 'prop-paddle',
@@ -135,6 +159,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Long-span wing and the economy engine: boost for days',
     build: {
       airframe: 'airframe-bush',
+      nose: 'nose-bush',
+      cabin: 'cabin-bush',
+      boom: 'boom-bush',
       frame: 'frame-light',
       engine: 'engine-albatross',
       prop: 'prop-three',
@@ -150,6 +177,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Light frame and four blades for low, fast coastal runs',
     build: {
       airframe: 'airframe-seaplane',
+      nose: 'nose-seaplane',
+      cabin: 'cabin-seaplane',
+      boom: 'boom-seaplane',
       frame: 'frame-light',
       engine: 'engine-tuned',
       prop: 'prop-four',
@@ -164,6 +194,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Twin engines and twin fins: a steady heavy hauler',
     build: {
       airframe: 'airframe-seaplane',
+      nose: 'nose-seaplane',
+      cabin: 'cabin-seaplane',
+      boom: 'boom-seaplane',
       frame: 'frame-reinforced',
       engine: 'engine-twin',
       prop: 'prop-three',
@@ -179,6 +212,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'Elliptical wing and coarse props to carry speed everywhere',
     build: {
       airframe: 'airframe-cruiser',
+      nose: 'nose-cruiser',
+      cabin: 'cabin-cruiser',
+      boom: 'boom-cruiser',
       frame: 'frame-composite',
       engine: 'engine-twin',
       prop: 'prop-two',
@@ -193,6 +229,9 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
     note: 'One supercharged engine in the nose and a big tail',
     build: {
       airframe: 'airframe-cruiser',
+      nose: 'nose-cruiser',
+      cabin: 'cabin-cruiser',
+      boom: 'boom-cruiser',
       frame: 'frame-standard',
       engine: 'engine-hornet',
       prop: 'prop-four',

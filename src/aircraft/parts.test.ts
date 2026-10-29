@@ -16,10 +16,20 @@ import {
 } from './parts';
 
 describe('aircraft catalogue', () => {
-  it('has six airframes, one per archetype', () => {
-    expect(AIRFRAMES).toHaveLength(6);
-    expect(new Set(AIRFRAMES.map((a) => a.archetype)).size).toBe(6);
-    expect(new Set(AIRFRAMES.map((a) => a.visual)).size).toBe(6);
+  it('has six stock airframes, one per archetype, plus the Workshop Special', () => {
+    expect(AIRFRAMES).toHaveLength(7);
+    expect(new Set(AIRFRAMES.map((a) => a.archetype)).size).toBe(7);
+    expect(new Set(AIRFRAMES.map((a) => a.visual)).size).toBe(7);
+  });
+
+  it('every stock airframe brings a nose, cabin and tail boom section', () => {
+    for (const airframe of AIRFRAMES.filter((a) => a.id !== 'airframe-custom')) {
+      for (const category of ['nose', 'cabin', 'boom'] as const) {
+        const section = getPartIn(category, airframe.defaults[category]);
+        expect(section?.kind === 'part' && 'source' in section && section.source).toBe(airframe.id);
+        expect(airframe.accepts[category]).toEqual([airframe.defaults[category]]);
+      }
+    }
   });
 
   it('has several parts in every slot', () => {
@@ -50,9 +60,11 @@ describe('aircraft catalogue', () => {
     for (const part of ALL_PARTS) expect(part.look.length, part.id).toBeGreaterThan(0);
   });
 
-  it('defaults are free, and only defaults have the default unlock rule', () => {
+  it('defaults and sections are free; everything sold has a price', () => {
     for (const item of ALL_ITEMS) {
-      if (item.unlock.kind === 'default') expect(item.price, item.id).toBe(0);
+      const free =
+        item.unlock.kind === 'default' || item.unlock.kind === 'airframe' || item.unlock.kind === 'rival';
+      if (free) expect(item.price, item.id).toBe(0);
       else expect(item.price, item.id).toBeGreaterThan(0);
     }
   });

@@ -1,5 +1,6 @@
 import type { AircraftBuild } from '../aircraft/build';
-import type { ShopItem } from '../aircraft/parts';
+import { getItem, isSectionCategory, type ShopItem } from '../aircraft/parts';
+import { getRival, rivalLine, type Rival } from './rivals';
 import { bestTimeFor, newlyUnlockedParts, type PlayerProfile, type RaceRecord, MAX_HISTORY } from './profile';
 import { DEFAULT_COURSE_ID } from '../course/courses';
 import { BADGES, badgesEarned, nextGoal, type Badge, type NextGoal, type RunStyleStats } from './badges';
@@ -18,6 +19,18 @@ export interface RaceOutcome {
   build: AircraftBuild;
   /** Style stats for the race; omitted by callers that predate style scoring. */
   style?: RunStyleStats;
+  /** Rival id when this was a one-on-one challenge race. */
+  challenge?: string;
+}
+
+export interface ChallengeResult {
+  rival: Rival;
+  won: boolean;
+  /** What the rival says about it. */
+  line: string;
+  /** The section won, when it was new to the player. */
+  prize: ShopItem | null;
+  record: { wins: number; losses: number };
 }
 
 export interface RewardBreakdown {
@@ -61,6 +74,7 @@ export interface AppliedResult {
   badges: Badge[];
   /** Closest unearned badge after this race, or null when every badge is owned. */
   next: NextGoal | null;
+  challenge: ChallengeResult | null;
 }
 
 /** Applies a race outcome to the profile: credits, counters, best time, history, unlocks. */
@@ -112,11 +126,36 @@ export const applyRaceOutcome = (
     badges: [...profile.badges, ...earned.map((badge) => badge.id)],
     badgeProgress,
   };
+  let profile2 = next;
+  let challenge: ChallengeResult | null = null;
+  const rival = outcome.challenge ? getRival(outcome.challenge) : undefined;
+  if (rival) {
+    const won = outcome.position === 1;
+    const before = profile.rivals[rival.id] ?? { wins: 0, losses: 0 };
+    const record = { wins: before.wins + (won ? 1 : 0), losses: before.losses + (won ? 0 : 1) };
+    const prizeItem = getItem(rival.prize) ?? null;
+    const newPrize = won && prizeItem !== null && !profile.ownedParts.includes(prizeItem.id);
+    profile2 = {
+      ...next,
+      rivals: { ...next.rivals, [rival.id]: record },
+      ownedParts: newPrize ? [...next.ownedParts, prizeItem.id] : next.ownedParts,
+    };
+    challenge = {
+      rival,
+      won,
+      line: rivalLine(won ? rival.concede : rival.gloat, before.wins + before.losses),
+      prize: newPrize ? prizeItem : null,
+      record,
+    };
+  }
   return {
-    profile: next,
+    profile: profile2,
+    challenge,
     reward,
     newBestTime,
-    unlocked: newlyUnlockedParts(profile, next),
+    unlocked: newlyUnlockedParts(profile, next).filter(
+      (item) => item.kind === 'airframe' || !isSectionCategory(item.category),
+    ),
     record,
     newBestStyle,
     badges: earned,
