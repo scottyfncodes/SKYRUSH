@@ -95,11 +95,12 @@ body {
   inset: 0;
 }
 
-/* iOS Safari: size to the dynamic viewport so nothing hides behind the toolbar. */
+/* iOS Safari: size to the dynamic viewport so nothing hides behind the toolbar. The renderer
+   measures the real size (iOS Home Screen apps can report a short one) into --app-height. */
 @supports (height: 100dvh) {
   body,
   #app {
-    height: 100dvh;
+    height: var(--app-height, 100dvh);
   }
   #app {
     inset: auto;
@@ -286,6 +287,11 @@ p {
 
 .screen--menu {
   justify-content: flex-start;
+  /* Centre the menu when it fits; when the screen is too short, scroll from the top
+     instead of clipping the title. */
+  align-items: flex-start;
+  overflow-y: auto;
+  touch-action: pan-y;
   background: linear-gradient(
     90deg,
     rgba(13, 21, 36, 0.94) 0%,
@@ -294,6 +300,7 @@ p {
   );
 }
 .menu-panel {
+  margin-block: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);

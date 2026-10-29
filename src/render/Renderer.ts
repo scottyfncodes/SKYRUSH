@@ -43,6 +43,27 @@ export const isCoarsePointer = (): boolean =>
     ? window.matchMedia('(pointer: coarse)').matches
     : false;
 
+/**
+ * The size the game should fill, in CSS pixels. iOS can report a stale, short
+ * `innerHeight` (and `100dvh`) after launching from the Home Screen or rotating,
+ * which left a dark band under the game; a Home Screen web app owns the whole
+ * display, so there the screen's own height wins when the width matches it.
+ */
+export const measureViewport = (): { width: number; height: number } => {
+  const width = Math.max(1, window.innerWidth);
+  let height = Math.max(1, window.innerHeight, document.documentElement.clientHeight);
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (standalone && screen.width > 0 && screen.height > 0) {
+    const long = Math.max(screen.width, screen.height);
+    const short = Math.min(screen.width, screen.height);
+    const landscape = width >= height;
+    const screenWidth = landscape ? long : short;
+    const screenHeight = landscape ? short : long;
+    if (Math.abs(width - screenWidth) <= 2) height = Math.max(height, screenHeight);
+  }
+  return { width, height };
+};
+
 /** Thin wrapper over WebGLRenderer handling sizing, DPR changes and context loss. */
 export class Renderer {
   readonly gl: WebGLRenderer;
@@ -55,6 +76,7 @@ export class Renderer {
   private readonly onContextRestored: () => void;
   private dprMedia: MediaQueryList | null = null;
   private readonly onDprChange: () => void;
+  private settleTimers: number[] = [];
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -78,7 +100,7 @@ export class Renderer {
     this.gl.shadowMap.enabled = this.options.shadows;
     this.gl.shadowMap.type = PCFSoftShadowMap;
 
-    this.onResize = () => this.resize();
+    this.onResize = () => this.resizeAndSettle();
     this.onContextLost = (event) => {
       event.preventDefault();
       this.contextLost = true;
@@ -92,6 +114,8 @@ export class Renderer {
     };
     window.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
+    window.addEventListener('pageshow', this.onResize);
+    window.visualViewport?.addEventListener('resize', this.onResize);
     canvas.addEventListener('webglcontextlost', this.onContextLost);
     canvas.addEventListener('webglcontextrestored', this.onContextRestored);
     this.watchDpr();
@@ -106,9 +130,17 @@ export class Renderer {
     }
   }
 
+  /** Resizes now and again as iOS settles, since it reports the final size late after rotation. */
+  private resizeAndSettle(): void {
+    this.resize();
+    for (const timer of this.settleTimers) window.clearTimeout(timer);
+    this.settleTimers = [150, 500, 1200].map((delay) => window.setTimeout(() => this.resize(), delay));
+  }
+
   resize(): void {
-    const width = Math.max(1, window.innerWidth);
-    const height = Math.max(1, window.innerHeight);
+    const { width, height } = measureViewport();
+    // The page layout follows the same measurement as the canvas.
+    document.documentElement.style.setProperty('--app-height', `${height}px`);
     this.width = width;
     this.height = height;
     this.gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.options.maxPixelRatio));
@@ -129,6 +161,9 @@ export class Renderer {
   dispose(): void {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('orientationchange', this.onResize);
+    window.removeEventListener('pageshow', this.onResize);
+    window.visualViewport?.removeEventListener('resize', this.onResize);
+    for (const timer of this.settleTimers) window.clearTimeout(timer);
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.dprMedia?.removeEventListener('change', this.onDprChange);
