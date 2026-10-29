@@ -2,6 +2,11 @@ import { expect, test } from '@playwright/test';
 import { collectErrors, getState, openGame, openHangar, openSlot, seedProfile } from './helpers';
 
 test.describe('hangar', () => {
+  // Several model rebuilds per test; software WebGL in CI renders them slowly.
+  test.beforeEach(() => {
+    test.slow();
+  });
+
   test('buys a new aircraft with a reveal, keeps the old one intact, and both survive a reload', async ({
     page,
   }) => {
@@ -20,13 +25,13 @@ test.describe('hangar', () => {
     // Previewing an aircraft shows it before buying.
     await expect(page.getByTestId('nameplate-name')).toHaveText('Mule');
     await expect(page.getByTestId('garage-action')).toHaveText('Buy · 2,200 cr');
-    await expect(page.getByTestId('garage-credits')).toHaveText('4,500');
+    await expect(page.getByTestId('garage-credits')).toHaveText('6,000');
     await page.getByTestId('garage-action').click();
     await expect(page.getByTestId('reveal')).toBeVisible();
     await expect(page.getByTestId('reveal')).toContainText('Mule');
     await page.getByTestId('reveal-close').click();
     await expect(page.getByTestId('reveal')).toBeHidden();
-    await expect(page.getByTestId('garage-credits')).toHaveText('2,300');
+    await expect(page.getByTestId('garage-credits')).toHaveText('3,800');
     let state = await getState(page);
     expect(state.build.airframe).toBe('airframe-bush');
     expect(state.build.gear).toBe('gear-tundra');
@@ -43,7 +48,7 @@ test.describe('hangar', () => {
     await expect(page.getByTestId('menu-aircraft')).toContainText('Meridian');
     state = await getState(page);
     expect(state.ownedParts).toContain('airframe-bush');
-    expect(state.credits).toBe(2300);
+    expect(state.credits).toBe(3800);
     expect(state.build.wings).toBe('wings-compact');
     expect(errors).toEqual([]);
   });
