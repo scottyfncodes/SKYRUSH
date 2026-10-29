@@ -44,6 +44,14 @@ const FOCUS: Record<
 };
 
 const FLOOR_Y = -2.2;
+const _target = new Vector3();
+
+export interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 /**
  * The hangar: a sunlit workshop with the hangar door open to the sky. The
@@ -76,8 +84,11 @@ export class GarageStage {
   private readonly shadow: Mesh;
   private readonly key: DirectionalLight;
   private resumeTimer = 0;
-  /** Horizontal offset so the aircraft sits between the garage side panels. */
-  focusOffset = 0;
+  /**
+   * The part of the screen (CSS px) the aircraft should fill: the gap between the
+   * hangar's panels, or right of the menu. Null uses the whole screen.
+   */
+  frame: ScreenRect | null = null;
   /** Whether pointer drags should orbit (false while another screen covers the canvas). */
   interactive = true;
 
@@ -346,18 +357,33 @@ export class GarageStage {
     this.pitch = damp(this.pitch, this.targetPitch, revealEase * 0.6, dt);
     this.zoom = damp(this.zoom, this.targetZoom * this.userZoom, revealEase * 0.6, dt);
     this.lookAt.lerp(this.targetLookAt, 1 - Math.exp(-4 * dt));
-    const radius = Math.max(9, this.view.handles.radius * 2.25) * this.zoom;
-    const height = FLOOR_Y + 2.6;
-    const focusY = Math.max(height, this.lookAt.y);
+    // Fit the aircraft into the free part of the screen: back the camera off until its
+    // span fits the frame's width and its height fits the frame's height.
+    const width = this.renderer.width;
+    const height = this.renderer.height;
+    const frame = this.frame ?? { left: 0, top: 0, right: width, bottom: height };
+    const frameW = Math.max(120, frame.right - frame.left);
+    const frameH = Math.max(90, frame.bottom - frame.top);
+    this.camera.fov = this.renderer.aspect < 1.2 ? 50 : 36;
+    const tanHalf = Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
+    const subject = this.view.handles.radius * 0.82;
+    const fit = Math.max(
+      (subject * height) / (tanHalf * frameW * 0.92),
+      (subject * 0.62 * height) / (tanHalf * frameH * 0.9),
+    );
+    const radius = Math.max(6, fit) * this.zoom;
+    const root = this.view.root.position;
+    const target = _target.set(this.lookAt.x, this.lookAt.y + root.y, this.lookAt.z);
     const x = Math.sin(this.yaw) * Math.cos(this.pitch) * radius;
     const z = Math.cos(this.yaw) * Math.cos(this.pitch) * radius;
-    const y = Math.sin(this.pitch) * radius + focusY;
-    this.camera.position.set(x + this.lookAt.x, Math.max(FLOOR_Y + 0.6, y), z + this.lookAt.z);
-    // Aim a little below the subject so the aircraft sits above the detail card.
-    this.camera.lookAt(this.lookAt.x + this.focusOffset, focusY - 1.1 * this.zoom, this.lookAt.z);
+    const y = Math.sin(this.pitch) * radius;
+    this.camera.position.set(target.x + x, Math.max(FLOOR_Y + 0.5, target.y + y), target.z + z);
+    this.camera.lookAt(target);
     this.camera.aspect = this.renderer.aspect;
-    // Portrait-ish or very narrow viewports need a wider lens to keep the wings in frame.
-    this.camera.fov = this.renderer.aspect < 1.2 ? 50 : 36;
+    // Shift the projection so the aircraft centres in the free frame, not the screen.
+    const centreX = (frame.left + frame.right) / 2;
+    const centreY = (frame.top + frame.bottom) / 2;
+    this.camera.setViewOffset(width, height, width / 2 - centreX, height / 2 - centreY, width, height);
     this.camera.updateProjectionMatrix();
 
     // Idle engine: prop ticking over, a little shimmer.

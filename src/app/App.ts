@@ -294,6 +294,12 @@ export class App {
       case 'garage':
       case 'briefing':
       case 'settings':
+        this.garageStage.frame =
+          this.screen === 'garage'
+            ? this.garage.freeArea()
+            : this.screen === 'menu'
+              ? this.menu.freeArea()
+              : null;
         this.garageStage.update(dt);
         this.garageStage.render();
         break;
@@ -352,7 +358,6 @@ export class App {
 
   goMenu(): void {
     this.disposeRace();
-    this.garageStage.focusOffset = 0;
     this.garageStage.setSetup(activeSetup(this.profile));
     this.garageStage.setFocus('overview');
     this.setScreen('menu');
@@ -362,7 +367,6 @@ export class App {
 
   goGarage(): void {
     this.disposeRace();
-    this.garageStage.focusOffset = 0;
     this.garageStage.setSetup(activeSetup(this.profile));
     this.setScreen('garage');
     this.garage.open(this.profile);
