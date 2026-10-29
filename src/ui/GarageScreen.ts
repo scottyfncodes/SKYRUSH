@@ -282,6 +282,19 @@ export class GarageScreen extends Screen {
     this.callbacks.onFocus(this.section === 'parts' ? FOCUS_FOR[this.slot] : 'overview');
   }
 
+  /** The screen area (CSS px) left free for the aircraft: between the panels, below the nameplate. */
+  freeArea(): { left: number; top: number; right: number; bottom: number } | null {
+    if (!this.visible) return null;
+    const left = this.element.querySelector('.garage-left')?.getBoundingClientRect();
+    const right = this.element.querySelector('.garage-right')?.getBoundingClientRect();
+    if (!left || !right || left.width === 0) return null;
+    const plate = this.nameplate.getBoundingClientRect();
+    const detail = this.detail.getBoundingClientRect();
+    const top = plate.height > 0 ? plate.bottom : left.top;
+    const bottom = detail.height > 0 ? detail.top : right.bottom;
+    return { left: left.right, top, right: right.left, bottom: Math.max(top + 60, bottom) };
+  }
+
   snapshotFor(airframeId: string): HangarEntry | undefined {
     return this.snapshot[airframeId];
   }

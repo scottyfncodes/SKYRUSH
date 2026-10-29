@@ -2615,7 +2615,7 @@ p {
     font-size: 16px;
   }
   .detail__tagline {
-    font-size: 11px;
+    display: none;
   }
   .detail__desc {
     display: none;
@@ -2624,8 +2624,9 @@ p {
     font-size: 11px;
     gap: 0 var(--space-2);
   }
-  .detail__facts dt:nth-of-type(n + 3),
-  .detail__facts dd:nth-of-type(n + 3) {
+  /* Keep the card short so the aircraft keeps most of the space: name, one fact, the action. */
+  .detail__facts dt:nth-of-type(n + 2),
+  .detail__facts dd:nth-of-type(n + 2) {
     display: none;
   }
   .detail__actions {

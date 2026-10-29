@@ -52,6 +52,14 @@ export class MainMenuScreen extends Screen {
     this.element.append(panel, this.footer);
   }
 
+  /** The screen area (CSS px) to the right of the menu, where the aircraft is shown. */
+  freeArea(): { left: number; top: number; right: number; bottom: number } | null {
+    if (!this.visible) return null;
+    const panel = this.element.querySelector('.menu-panel')?.getBoundingClientRect();
+    if (!panel || panel.width === 0) return null;
+    return { left: panel.right, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+  }
+
   update(profile: PlayerProfile): void {
     const build = activeBuild(profile);
     const airframe = getAirframe(build.airframe);
