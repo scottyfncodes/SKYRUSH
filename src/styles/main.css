@@ -614,7 +614,8 @@ p {
 
 .garage-sections {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* "Aircraft" is the longest label; give it the room it needs. */
+  grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr));
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
   overflow: hidden;
@@ -629,8 +630,9 @@ p {
   color: var(--text-dim);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
 }
 .section-tab:last-child {
@@ -685,10 +687,15 @@ p {
 .slot-chip__part {
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.15;
   color: var(--text);
-  white-space: nowrap;
+  /* Two lines so names like "Kestrel Inline" read in full on narrow screens. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   max-width: 100%;
 }
 
@@ -1121,10 +1128,14 @@ p {
   align-items: baseline;
 }
 .stat-row__label {
+  grid-column: 1;
+  grid-row: 1;
   font-size: 12px;
   color: rgba(23, 35, 59, 0.8);
 }
 .stat-row__value {
+  grid-column: 2;
+  grid-row: 1;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
@@ -1139,6 +1150,8 @@ p {
   color: var(--cherry);
 }
 .stat-row__delta {
+  grid-column: 3;
+  grid-row: 1;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
@@ -1146,6 +1159,7 @@ p {
 }
 .stat-bar {
   grid-column: 1 / 4;
+  grid-row: 2;
   position: relative;
   height: 4px;
   background: rgba(23, 35, 59, 0.12);
