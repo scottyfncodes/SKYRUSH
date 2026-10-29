@@ -158,7 +158,9 @@ Rendering and DOM are kept out of those modules. The flight model's assumptions 
 
 `public/` holds the home-screen icon set (`skyrush-icon.png` 1024², 512/192 and a maskable 512 for the
 web manifest, the 180² `apple-touch-icon.png` and a simplified `favicon-32.png`) plus
-`manifest.webmanifest`. The art is original vector work in `scripts/icon/`; regenerate with
+`manifest.webmanifest`. The icon is an air-race poster: `scripts/icon/skyrush-icon.svg` paints the
+sky, sun and coast, and `scripts/icon/aircraft.png` is the Meridian rendered from the game's own model
+by `scripts/icon/build-aircraft.mjs` (pose in `aircraft-shot.ts`). Regenerate with
 `node scripts/icon/build-aircraft.mjs && node scripts/icon/render-icon.mjs` (uses Playwright's Chromium).
 
 ### Deployment

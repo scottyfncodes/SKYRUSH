@@ -7,7 +7,9 @@
 // rendered straight from the vector source so small sizes stay crisp.
 // Variants are produced by injecting a transform/style into the SVG:
 //   - maskable: subject scaled into the 80% safe zone, background untouched
-//   - favicon:  detail layers hidden, jet enlarged for 32px legibility
+//   - favicon:  detail layers hidden, aircraft enlarged for 32px legibility
+// The aircraft itself is scripts/icon/aircraft.png (from build-aircraft.mjs),
+// inlined into the SVG as a data URI before rendering.
 import { chromium } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -16,7 +18,11 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
 const outDir = resolve(root, 'public');
-const svgSource = await readFile(resolve(here, 'skyrush-icon.svg'), 'utf8');
+const aircraftPng = await readFile(resolve(here, 'aircraft.png'));
+const svgSource = (await readFile(resolve(here, 'skyrush-icon.svg'), 'utf8')).replace(
+  'href="aircraft.png"',
+  `href="data:image/png;base64,${aircraftPng.toString('base64')}"`,
+);
 
 const previewArgIndex = process.argv.indexOf('--preview');
 const previewPath = previewArgIndex > -1 ? resolve(process.argv[previewArgIndex + 1]) : null;
@@ -34,7 +40,7 @@ function withStyle(svg, css) {
 const variants = {
   full: svgSource,
   maskable: withSubjectScale(svgSource, 0.8),
-  favicon: withStyle(withSubjectScale(svgSource, 1.25, -14, 26), '.detail,.sun{display:none}'),
+  favicon: withStyle(withSubjectScale(svgSource, 1.22, -20, 10), '.detail{display:none}'),
 };
 
 const outputs = [
@@ -46,7 +52,7 @@ const outputs = [
   { file: 'favicon-32.png', size: 32, variant: 'favicon' },
 ];
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ executablePath: process.env.SKYRUSH_CHROMIUM || undefined });
 try {
   const page = await browser.newPage({ deviceScaleFactor: 1 });
 

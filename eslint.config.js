@@ -16,7 +16,9 @@ export default tseslint.config(
   {
     // Node build helpers (e.g. the icon renderer) run outside the browser.
     files: ['scripts/**/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', URL: 'readonly' },
+    },
     rules: { 'no-console': 'off' },
   },
 );
