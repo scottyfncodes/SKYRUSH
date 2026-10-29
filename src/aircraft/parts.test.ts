@@ -1,70 +1,106 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AIRFRAMES,
+  ALL_ITEMS,
   ALL_PARTS,
-  DEFAULT_LIVERY_ID,
-  DEFAULT_PART_IDS,
-  ENGINES,
-  FUSELAGES,
-  LIVERIES,
-  WINGS,
+  PART_CATEGORIES,
+  airframesAccepting,
   describeUnlock,
-  getEngine,
-  getFuselage,
-  getLivery,
+  getAirframe,
+  getItem,
   getPart,
-  getWings,
+  getPartIn,
+  isCompatible,
   partsForCategory,
   type UnlockRule,
 } from './parts';
 
-describe('part catalogue', () => {
-  it('has three parts per category', () => {
-    expect(FUSELAGES).toHaveLength(3);
-    expect(ENGINES).toHaveLength(3);
-    expect(WINGS).toHaveLength(3);
-    expect(ALL_PARTS).toHaveLength(9);
+describe('aircraft catalogue', () => {
+  it('has six airframes, one per archetype', () => {
+    expect(AIRFRAMES).toHaveLength(6);
+    expect(new Set(AIRFRAMES.map((a) => a.archetype)).size).toBe(6);
+    expect(new Set(AIRFRAMES.map((a) => a.visual)).size).toBe(6);
   });
 
-  it('has unique part ids and livery ids', () => {
-    const ids = ALL_PARTS.map((part) => part.id);
+  it('has several parts in every slot', () => {
+    for (const category of PART_CATEGORIES)
+      expect(partsForCategory(category).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('has unique ids across airframes and parts', () => {
+    const ids = ALL_ITEMS.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
-    const liveryIds = LIVERIES.map((livery) => livery.id);
-    expect(new Set(liveryIds).size).toBe(liveryIds.length);
   });
 
-  it('every part has a sane price, positive mass and a category matching its list', () => {
-    for (const part of FUSELAGES) expect(part.category).toBe('fuselage');
-    for (const part of ENGINES) expect(part.category).toBe('engine');
-    for (const part of WINGS) expect(part.category).toBe('wings');
-    for (const part of ALL_PARTS) {
-      expect(part.price).toBeGreaterThanOrEqual(0);
-      expect(part.mass).toBeGreaterThan(0);
-      expect(part.name.length).toBeGreaterThan(0);
+  it('every item explains itself: role, strength, trade-off and copy without em dashes', () => {
+    for (const item of ALL_ITEMS) {
+      for (const text of [
+        item.name,
+        item.tagline,
+        item.description,
+        item.role,
+        item.strength,
+        item.tradeoff,
+      ]) {
+        expect(text.length, item.id).toBeGreaterThan(0);
+        expect(text, item.id).not.toContain('—');
+      }
+      expect(item.price).toBeGreaterThanOrEqual(0);
+    }
+    for (const part of ALL_PARTS) expect(part.look.length, part.id).toBeGreaterThan(0);
+  });
+
+  it('defaults are free, and only defaults have the default unlock rule', () => {
+    for (const item of ALL_ITEMS) {
+      if (item.unlock.kind === 'default') expect(item.price, item.id).toBe(0);
+      else expect(item.price, item.id).toBeGreaterThan(0);
     }
   });
 
-  it('default parts are exactly the ones with a default unlock rule', () => {
-    const defaults = ALL_PARTS.filter((part) => part.unlock.kind === 'default').map((part) => part.id);
-    expect(defaults.sort()).toEqual(Object.values(DEFAULT_PART_IDS).sort());
-    for (const id of Object.values(DEFAULT_PART_IDS)) expect(getPart(id)?.price).toBe(0);
-    expect(getLivery(DEFAULT_LIVERY_ID)).toBeDefined();
+  it('prerequisites point at real items of the same slot', () => {
+    for (const part of ALL_PARTS) {
+      if (!part.requires) continue;
+      const required = getPart(part.requires);
+      expect(required, part.id).toBeDefined();
+      expect(required!.category).toBe(part.category);
+    }
   });
 
   it('typed getters only return parts of their category', () => {
-    expect(getFuselage('fuselage-needle')?.id).toBe('fuselage-needle');
-    expect(getFuselage('engine-twin')).toBeUndefined();
-    expect(getEngine('engine-twin')?.id).toBe('engine-twin');
-    expect(getEngine('wings-compact')).toBeUndefined();
-    expect(getWings('wings-compact')?.id).toBe('wings-compact');
-    expect(getWings('fuselage-needle')).toBeUndefined();
+    expect(getPartIn('engine', 'engine-twin')?.id).toBe('engine-twin');
+    expect(getPartIn('engine', 'wings-compact')).toBeUndefined();
+    expect(getPartIn('wings', 'wings-compact')?.id).toBe('wings-compact');
     expect(getPart('nope')).toBeUndefined();
-    expect(getLivery('nope')).toBeUndefined();
+    expect(getAirframe('engine-twin')).toBeUndefined();
+    expect(getItem('airframe-scout')?.kind).toBe('airframe');
+  });
+});
+
+describe('compatibility', () => {
+  it('every airframe accepts only real parts of the right slot, including its own defaults', () => {
+    for (const airframe of AIRFRAMES) {
+      for (const category of PART_CATEGORIES) {
+        expect(airframe.accepts[category].length, `${airframe.id} ${category}`).toBeGreaterThan(0);
+        for (const id of airframe.accepts[category]) expect(getPartIn(category, id), id).toBeDefined();
+        expect(airframe.accepts[category]).toContain(airframe.defaults[category]);
+      }
+    }
   });
 
-  it('partsForCategory returns the matching list', () => {
-    expect(partsForCategory('fuselage')).toBe(FUSELAGES);
-    expect(partsForCategory('engine')).toBe(ENGINES);
-    expect(partsForCategory('wings')).toBe(WINGS);
+  it('every part fits at least one airframe', () => {
+    for (const part of ALL_PARTS) expect(airframesAccepting(part).length, part.id).toBeGreaterThan(0);
+  });
+
+  it('encodes the physical rules: floats for water aircraft, twins for big wings, seaplane only on floats', () => {
+    const seaplane = getAirframe('airframe-seaplane')!;
+    const scout = getAirframe('airframe-scout')!;
+    const racer = getAirframe('airframe-racer')!;
+    expect(seaplane.accepts.gear).toEqual(['gear-floats']);
+    expect(isCompatible(scout, getPart('gear-floats')!)).toBe(false);
+    expect(isCompatible(scout, getPart('engine-twin')!)).toBe(false);
+    expect(isCompatible(racer, getPart('wings-glider')!)).toBe(false);
+    expect(isCompatible(getAirframe('airframe-bush')!, getPart('gear-floats')!)).toBe(true);
+    expect(isCompatible(getAirframe('airframe-cruiser')!, getPart('engine-twin')!)).toBe(true);
   });
 });
 
@@ -77,19 +113,14 @@ describe('describeUnlock', () => {
       { kind: 'races', count: 3 },
       { kind: 'podium', count: 1 },
       { kind: 'podium', count: 2 },
+      { kind: 'wins', count: 1 },
+      { kind: 'style', score: 3000 },
     ];
-    for (const rule of rules) {
-      const text = describeUnlock(rule);
-      expect(typeof text).toBe('string');
-      expect(text.length).toBeGreaterThan(0);
-    }
+    for (const rule of rules) expect(describeUnlock(rule).length).toBeGreaterThan(0);
     expect(describeUnlock({ kind: 'races', count: 1 })).toBe('Finish 1 race to unlock');
     expect(describeUnlock({ kind: 'races', count: 3 })).toBe('Finish 3 races to unlock');
     expect(describeUnlock({ kind: 'podium', count: 1 })).toContain('once');
     expect(describeUnlock({ kind: 'podium', count: 2 })).toContain('2 times');
-  });
-
-  it('covers the rule of every catalogue part', () => {
-    for (const part of ALL_PARTS) expect(describeUnlock(part.unlock).length).toBeGreaterThan(0);
+    expect(describeUnlock({ kind: 'style', score: 3000 })).toContain('3,000');
   });
 });

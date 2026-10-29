@@ -1,4 +1,4 @@
-import { LIVERIES, type Livery } from '../aircraft/parts';
+import { THEMES, type PaintTheme } from '../aircraft/paint';
 
 /** What a single finished race contributed, as measured by the style tracker. */
 export interface RunStyleStats {
@@ -26,7 +26,7 @@ export const BULLSEYE_TARGET = 8;
 export const SKIMMER_TARGET = 6;
 export const COMBO_KING_TARGET = 4;
 
-/** Skill badges. Each one unlocks a livery (cosmetic only, never a performance edge). */
+/** Skill badges. Each one unlocks a paint swatch and livery theme (cosmetic only, never a performance edge). */
 export const BADGES: readonly Badge[] = [
   {
     id: 'ring-runner',
@@ -64,15 +64,13 @@ export const isBadgeId = (id: unknown): id is string => typeof id === 'string' &
 export const badgesEarned = (owned: readonly string[], run: RunStyleStats): Badge[] =>
   BADGES.filter((badge) => !owned.includes(badge.id) && badge.progress(run) >= 1);
 
-export const liveryForBadge = (badgeId: string): Livery | undefined =>
-  LIVERIES.find((livery) => livery.badge === badgeId);
-
-export const isLiveryUnlocked = (livery: Livery, badges: readonly string[]): boolean =>
-  !livery.badge || badges.includes(livery.badge);
+/** The livery theme (and its swatch) a badge unlocks. */
+export const liveryForBadge = (badgeId: string): PaintTheme | undefined =>
+  THEMES.find((theme) => theme.badge === badgeId);
 
 export interface NextGoal {
   badge: Badge;
-  livery: Livery | undefined;
+  livery: PaintTheme | undefined;
   /** Best progress seen so far (0..1). */
   progress: number;
 }

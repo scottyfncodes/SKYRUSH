@@ -13,7 +13,11 @@ import {
 } from '../race/RaceSimulation';
 import { FixedStepClock } from '../core/time';
 import { NEUTRAL_INPUT, resetFlightState, type FlightInput } from '../flight/FlightModel';
-import { resolveBuild, type AircraftBuild } from '../aircraft/build';
+import { resolveBuild, type AircraftSetup } from '../aircraft/build';
+import { getTheme, trailColor } from '../aircraft/paint';
+import { factoryPaint } from '../progression/profile';
+import { createEnvironmentMap } from '../render/envMap';
+import type { WebGLRenderTarget } from 'three';
 import { AI_PERSONALITIES, computeAiInput, type AiPersonality } from '../ai/AiPilot';
 import type { InputManager } from '../controls/InputManager';
 import type { Hud, HudState } from '../ui/Hud';
@@ -32,7 +36,7 @@ export interface RaceStageOptions {
   input: InputManager;
   hud: Hud;
   audio: AudioEngine;
-  build: AircraftBuild;
+  setup: AircraftSetup;
   settings: PlayerSettings;
   aiSkill: number;
   onPlayerFinished: (standings: Standing[]) => void;
@@ -63,13 +67,15 @@ export class RaceStage {
   private finishedNotified = false;
   private readonly hudState: HudState;
   private readonly autopilotPersonality: AiPersonality;
+  private readonly environment: WebGLRenderTarget;
   paused = false;
   /** Test harness hooks (only reachable through the e2e interface). */
   autopilot = false;
   timeScale = 1;
 
   constructor(private readonly options: RaceStageOptions) {
-    const { circuit, renderer, build } = options;
+    const { circuit, renderer, setup } = options;
+    const build = setup.build;
     this.world = createWorld(circuit, {
       shadows: renderer.options.shadows,
       quality: renderer.options.quality,
@@ -79,8 +85,16 @@ export class RaceStage {
     this.reducedMotion = prefersReducedMotion();
     this.camera.motionScale = this.reducedMotion ? 0 : 1;
     this.speedLines = this.reducedMotion ? null : new SpeedLines(this.world.scene);
-    const livery = resolveBuild(build).livery;
-    this.contrails = new Contrails(this.world.scene, livery.trail ?? 0xf4f1ea);
+    this.contrails = new Contrails(this.world.scene, trailColor(setup.paint));
+    options.audio.setEngineSound(resolveBuild(build).engine.sound);
+    const { theme } = circuit;
+    this.environment = createEnvironmentMap(renderer.gl, {
+      zenith: theme.sky.zenith,
+      horizon: theme.sky.horizon,
+      ground: theme.sky.ground,
+      sun: theme.sun.direction,
+      sunColor: theme.sun.color,
+    });
     this.configs = [
       { id: 'player', name: 'You', callsign: 'YOU', isPlayer: true, build },
       ...AI_PERSONALITIES.map((ai) => ({
@@ -111,8 +125,20 @@ export class RaceStage {
       penalties: 0,
       style: { score: 0, multiplier: 1, comboTime: 0, rings: 0, ringTotal: circuit.rings.length },
     };
+    const aiPaints = new Map(
+      AI_PERSONALITIES.map((ai) => [
+        ai.id,
+        { ...(getTheme(ai.livery)?.paint ?? factoryPaint(ai.build.airframe)) },
+      ]),
+    );
     for (const config of this.configs) {
-      const view = new AircraftView(resolveBuild(config.build));
+      const view = new AircraftView(
+        config.isPlayer
+          ? setup
+          : { build: config.build, paint: aiPaints.get(config.id) ?? factoryPaint(config.build.airframe) },
+        this.environment.texture,
+      );
+      view.setGearDown(false);
       this.views.set(config.id, view);
       this.world.scene.add(view.root);
     }
@@ -499,6 +525,7 @@ export class RaceStage {
     this.speedLines?.dispose();
     this.contrails.dispose();
     this.world.dispose();
+    this.environment.dispose();
     this.options.renderer.gl.toneMappingExposure = DEFAULT_EXPOSURE;
   }
 }

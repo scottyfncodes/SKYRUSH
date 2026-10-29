@@ -3,16 +3,29 @@ import {
   BADGES,
   BULLSEYE_TARGET,
   badgesEarned,
-  isLiveryUnlocked,
   liveryForBadge,
   nextGoal,
   type RunStyleStats,
 } from './badges';
 import { applyRaceOutcome, computeReward, type RaceOutcome } from './rewards';
-import { createDefaultProfile, isLiveryAvailable, sanitiseProfile, setLivery } from './profile';
+import {
+  activeEntry,
+  createDefaultProfile,
+  factoryPaint,
+  isThemeAvailable,
+  sanitiseProfile,
+  setLivery,
+} from './profile';
 import { createMemoryStorage, loadProfile, saveProfile, SAVE_KEY } from './save';
 import { DEFAULT_BUILD } from '../aircraft/build';
-import { DEFAULT_LIVERY_ID, LIVERIES, getLivery } from '../aircraft/parts';
+import {
+  DEFAULT_PAINT,
+  DEFAULT_THEME_ID,
+  SWATCHES,
+  THEMES,
+  getTheme,
+  isThemeUnlocked,
+} from '../aircraft/paint';
 import { STYLE_CREDIT_CAP } from '../style/StyleTracker';
 
 const quietRun: RunStyleStats = {
@@ -40,24 +53,25 @@ const outcome = (style?: RunStyleStats): RaceOutcome => ({
 });
 
 describe('badge catalogue', () => {
-  it('every badge unlocks exactly one cosmetic livery', () => {
+  it('every badge unlocks exactly one livery theme and one paint swatch', () => {
     for (const badge of BADGES) {
       const livery = liveryForBadge(badge.id);
       expect(livery, badge.id).toBeDefined();
-      expect(LIVERIES.filter((l) => l.badge === badge.id)).toHaveLength(1);
+      expect(THEMES.filter((l) => l.badge === badge.id)).toHaveLength(1);
+      expect(SWATCHES.filter((s) => s.badge === badge.id)).toHaveLength(1);
     }
-    // Every badge-gated livery points at a real badge.
-    for (const livery of LIVERIES.filter((l) => l.badge)) {
-      expect(BADGES.some((b) => b.id === livery.badge)).toBe(true);
+    // Every badge-gated theme and swatch points at a real badge.
+    for (const gated of [...THEMES, ...SWATCHES].filter((l) => l.badge)) {
+      expect(BADGES.some((b) => b.id === gated.badge)).toBe(true);
     }
   });
 
-  it('factory liveries stay unlocked; earned ones need their badge', () => {
-    const factory = getLivery(DEFAULT_LIVERY_ID)!;
+  it('factory themes stay unlocked; earned ones need their badge', () => {
+    const factory = getTheme(DEFAULT_THEME_ID)!;
     const earned = liveryForBadge('bullseye')!;
-    expect(isLiveryUnlocked(factory, [])).toBe(true);
-    expect(isLiveryUnlocked(earned, [])).toBe(false);
-    expect(isLiveryUnlocked(earned, ['bullseye'])).toBe(true);
+    expect(isThemeUnlocked(factory, [])).toBe(true);
+    expect(isThemeUnlocked(earned, [])).toBe(false);
+    expect(isThemeUnlocked(earned, ['bullseye'])).toBe(true);
   });
 
   it('awards badges that reach their goal and never awards an owned badge twice', () => {
@@ -121,11 +135,11 @@ describe('style rewards and progression', () => {
   it('only lets the player apply liveries they have earned', () => {
     const profile = createDefaultProfile();
     const neon = liveryForBadge('combo-king')!;
-    expect(isLiveryAvailable(profile, neon.id)).toBe(false);
+    expect(isThemeAvailable(profile, neon.id)).toBe(false);
     expect(setLivery(profile, neon.id)).toBe(profile);
     expect(setLivery(profile, 'livery-does-not-exist')).toBe(profile);
     const earned = { ...profile, badges: ['combo-king'] };
-    expect(setLivery(earned, neon.id).build.livery).toBe(neon.id);
+    expect(activeEntry(setLivery(earned, neon.id)).paint).toEqual(neon.paint);
   });
 });
 
@@ -136,9 +150,14 @@ describe('save compatibility', () => {
       version: 1,
       credits: 8123,
       ownedParts: ['fuselage-allrounder', 'engine-efficient', 'wings-balanced', 'wings-compact'],
-      build: { ...DEFAULT_BUILD, wings: 'wings-compact', livery: 'livery-glacier' },
+      build: {
+        fuselage: 'fuselage-allrounder',
+        engine: 'engine-efficient',
+        wings: 'wings-compact',
+        livery: 'livery-glacier',
+      },
       bestTime: 101.25,
-      bestTimeBuild: { ...DEFAULT_BUILD },
+      bestTimeBuild: { fuselage: 'fuselage-allrounder', engine: 'engine-efficient', wings: 'wings-balanced' },
       racesCompleted: 7,
       podiums: 4,
       wins: 2,
@@ -151,7 +170,7 @@ describe('save compatibility', () => {
           missedGates: 0,
           credits: 2400,
           date: '2026-05-01T10:00:00.000Z',
-          build: { ...DEFAULT_BUILD },
+          build: { fuselage: 'fuselage-allrounder', engine: 'engine-efficient', wings: 'wings-balanced' },
         },
       ],
       settings: { assist: 0.4, invertPitch: true, audio: false, sensitivity: 1.3 },
@@ -165,14 +184,15 @@ describe('save compatibility', () => {
       podiums: 4,
       wins: 2,
       bestTime: 101.25,
-      build: { wings: 'wings-compact', livery: 'livery-glacier' },
       settings: { assist: 0.4, invertPitch: true, audio: false, sensitivity: 1.3, haptics: true },
       bestStyle: 0,
       bestMultiplier: 1,
       badges: [],
       badgeProgress: {},
     });
-    expect(profile.history[0]).toMatchObject({ time: 101.25, style: 0 });
+    expect(activeEntry(profile).build).toEqual({ ...DEFAULT_BUILD, wings: 'wings-compact' });
+    expect(activeEntry(profile).paint).toEqual(getTheme('livery-glacier')!.paint);
+    expect(profile.history[0]).toMatchObject({ time: 101.25, style: 0, build: DEFAULT_BUILD });
     // And it round-trips with the new fields.
     saveProfile(storage, profile);
     expect(loadProfile(storage).profile).toEqual(profile);
@@ -184,18 +204,34 @@ describe('save compatibility', () => {
       bestMultiplier: 99,
       badges: ['bullseye', 'bullseye', 'made-up', 7],
       badgeProgress: { bullseye: 3, 'made-up': 0.5, 'canyon-skimmer': Number.NaN },
-      build: { ...DEFAULT_BUILD, livery: liveryForBadge('combo-king')!.id },
+      build: {
+        fuselage: 'fuselage-allrounder',
+        engine: 'engine-efficient',
+        wings: 'wings-balanced',
+        livery: 'livery-neon',
+      },
     });
     expect(profile.bestStyle).toBe(0);
     expect(profile.bestMultiplier).toBe(4);
     expect(profile.badges).toEqual(['bullseye']);
     expect(profile.badgeProgress).toEqual({ bullseye: 1 });
-    expect(profile.build.livery).toBe(DEFAULT_LIVERY_ID);
+    expect(activeEntry(profile).paint).toEqual(factoryPaint('airframe-sport'));
 
     const earned = sanitiseProfile({
       badges: ['combo-king'],
-      build: { ...DEFAULT_BUILD, livery: liveryForBadge('combo-king')!.id },
+      build: {
+        fuselage: 'fuselage-allrounder',
+        engine: 'engine-efficient',
+        wings: 'wings-balanced',
+        livery: 'livery-neon',
+      },
     });
-    expect(earned.build.livery).toBe(liveryForBadge('combo-king')!.id);
+    expect(activeEntry(earned).paint).toEqual(liveryForBadge('combo-king')!.paint);
+    // Version 2 paint with a locked swatch is repaired slot by slot.
+    const tampered = sanitiseProfile({
+      version: 2,
+      hangar: { 'airframe-sport': { build: DEFAULT_BUILD, paint: { ...DEFAULT_PAINT, primary: 'aurora' } } },
+    });
+    expect(activeEntry(tampered).paint).toEqual(DEFAULT_PAINT);
   });
 });

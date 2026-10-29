@@ -32,7 +32,7 @@ export class PauseScreen extends Screen {
             { className: 'dialog__actions' },
             button('Resume', this.callbacks.onResume, { variant: 'primary', testId: 'pause-resume' }),
             button('Restart race', this.callbacks.onRestart, { testId: 'pause-restart' }),
-            button('Quit to garage', this.callbacks.onQuit, { variant: 'ghost', testId: 'pause-quit' }),
+            button('Quit to hangar', this.callbacks.onQuit, { variant: 'ghost', testId: 'pause-quit' }),
           )
         : h(
             'div',

@@ -1,16 +1,17 @@
-import type { Vector3 } from 'three';
+import type { Texture, Vector3 } from 'three';
 import { Color, Group, MathUtils } from 'three';
-import type { ResolvedBuild } from '../aircraft/build';
+import type { AircraftSetup } from '../aircraft/build';
 import type { FlightInput, FlightState } from '../flight/FlightModel';
 import { buildAircraftModel, type AircraftModelHandles } from './aircraftModel';
 import { damp } from '../core/math';
 
 const OVERHEAT_COLOR = new Color(0xff4a1a);
-const _tmpColor = new Color();
+/** Altitude (m) above which retractable gear folds away. */
+const GEAR_UP_ALTITUDE = 6;
 
 /**
  * Binds a procedural aircraft model to a flight state: pose, control surface
- * animation, exhaust scaling, overheat glow and crash visibility.
+ * animation, propeller spin and blur, gear retraction, exhaust and overheat glow.
  */
 export class AircraftView {
   readonly root = new Group();
@@ -21,16 +22,23 @@ export class AircraftView {
   private brake = 0;
   private flame = 0;
   private heatGlow = 0;
+  private rpm = 0;
+  private gear = 1;
+  private propAngle = 0;
+  private flicker = 0;
 
-  constructor(build: ResolvedBuild) {
-    this.model = buildAircraftModel(build);
+  constructor(
+    setup: AircraftSetup,
+    private readonly envMap: Texture | null = null,
+  ) {
+    this.model = buildAircraftModel(setup, { envMap });
     this.root.add(this.model.root);
   }
 
-  setBuild(build: ResolvedBuild): void {
+  setSetup(setup: AircraftSetup): void {
     this.root.remove(this.model.root);
     this.model.dispose();
-    this.model = buildAircraftModel(build);
+    this.model = buildAircraftModel(setup, { envMap: this.envMap });
     this.root.add(this.model.root);
   }
 
@@ -47,44 +55,63 @@ export class AircraftView {
     this.root.visible = visible;
   }
 
+  /** Snaps gear to its flight position (used when a race starts in the air). */
+  setGearDown(down: boolean): void {
+    this.gear = down ? 1 : 0;
+  }
+
   /** Animates surfaces and effects from the latest input and flight state. */
   animate(state: FlightState, input: FlightInput, dt: number): void {
     this.aileron = damp(this.aileron, input.roll, 12, dt);
     this.elevator = damp(this.elevator, input.pitch, 12, dt);
     this.rudder = damp(this.rudder, input.yaw, 10, dt);
     this.brake = damp(this.brake, state.airbrake ? 1 : 0, 8, dt);
-    const flameTarget = state.throttle * (state.boosting ? 1.9 : 1) * (state.overheated ? 0.6 : 1);
+    const boost = state.boosting ? 1 : 0;
+    const flameTarget = (0.35 + state.throttle * 0.5 + boost * 1.4) * (state.overheated ? 0.5 : 1);
     this.flame = damp(this.flame, flameTarget, 9, dt);
     this.heatGlow = damp(this.heatGlow, Math.max(0, (state.heat - 0.55) / 0.45), 4, dt);
+    this.rpm = damp(this.rpm, 0.18 + state.throttle * 0.7 + boost * 0.12, 3, dt);
+    this.gear = damp(this.gear, state.altitude > GEAR_UP_ALTITUDE ? 0 : 1, 1.6, dt);
+    this.flicker += dt * 40;
 
-    const { ailerons, elevators, rudders, airbrakes, exhausts, glows, accentMaterials } = this.model;
-    ailerons.left.rotation.x = this.aileron * 0.5;
-    ailerons.right.rotation.x = -this.aileron * 0.5;
-    for (const elevator of elevators) elevator.rotation.x = this.elevator * 0.45;
-    for (const rudder of rudders) rudder.rotation.y = -this.rudder * 0.4;
-    airbrakes.forEach((brake, index) => {
-      brake.rotation.x = -this.brake * 0.9;
-      brake.rotation.z = (index === 0 ? 1 : -1) * this.brake * 0.15;
-    });
+    const { ailerons, elevators, rudders, airbrakes, exhausts, glows, accentMaterials, props, gearLegs } =
+      this.model;
+    // Roll right: left aileron trailing edge down, right one up.
+    ailerons.left.rotation.x = -this.aileron * 0.45;
+    ailerons.right.rotation.x = this.aileron * 0.45;
+    for (const elevator of elevators) elevator.rotation.x = this.elevator * 0.42;
+    for (const rudder of rudders) {
+      // V-tail surfaces are also elevators; only pure rudders follow yaw.
+      if (!elevators.includes(rudder)) rudder.rotation.x = this.rudder * 0.4;
+    }
+    for (const brake of airbrakes) brake.rotation.x = this.brake * 0.9;
 
-    const flicker = 1 + Math.sin(performance.now() * 0.05) * 0.06;
+    // Propellers: blades turn and fade into a blur disc as RPM rises.
+    this.propAngle = (this.propAngle + this.rpm * 70 * dt) % (Math.PI * 2);
+    const blur = MathUtils.smoothstep(this.rpm, 0.3, 0.7);
+    for (const prop of props) {
+      prop.spin.rotation.z = this.propAngle;
+      prop.blades.opacity = 1 - blur * 0.82;
+      prop.blades.depthWrite = blur < 0.5;
+      (prop.disc.material as { opacity: number }).opacity = blur * 0.75;
+    }
+    for (const leg of gearLegs) leg.pivot.rotation.z = -leg.side * (1 - this.gear) * (Math.PI / 2);
+
+    const flicker = 1 + Math.sin(this.flicker) * 0.08 + Math.sin(this.flicker * 2.7) * 0.05;
+    const visible = state.throttle > 0.05;
     for (const exhaust of exhausts) {
-      const length = MathUtils.clamp(this.flame, 0.05, 2.2) * flicker;
-      exhaust.scale.y = length;
-      exhaust.position.z = exhaust.userData.baseZ ?? (exhaust.userData.baseZ = exhaust.position.z);
-      exhaust.position.z = (exhaust.userData.baseZ as number) - (length - 1) * 1.2;
-      exhaust.visible = state.throttle > 0.05;
+      const base = (exhaust.userData.base as number | undefined) ?? 1;
+      const length = MathUtils.clamp(this.flame, 0.1, 2.4) * flicker;
+      exhaust.scale.set(base * (0.7 + this.flame * 0.2), base * (0.7 + this.flame * 0.2), base * length);
+      exhaust.visible = visible;
     }
     for (const glow of glows) {
-      const s = 0.8 + this.flame * 0.5;
-      glow.scale.set(s, s, 1);
-      glow.visible = state.throttle > 0.05;
+      glow.visible = visible && this.flame > 0.5;
     }
     const heatMaterial = accentMaterials[1];
     if (heatMaterial) {
-      heatMaterial.emissiveIntensity = this.heatGlow * 1.6;
-      _tmpColor.copy(OVERHEAT_COLOR);
-      heatMaterial.emissive.copy(_tmpColor);
+      heatMaterial.emissiveIntensity = this.heatGlow * 1.6 + boost * 0.5;
+      heatMaterial.emissive.copy(OVERHEAT_COLOR);
     }
   }
 

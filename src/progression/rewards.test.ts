@@ -165,20 +165,29 @@ describe('applyRaceOutcome', () => {
     expect(profile.racesCompleted).toBe(MAX_HISTORY + 3);
   });
 
-  it('returns newly unlocked parts', () => {
+  it('returns newly unlocked aircraft and parts', () => {
     const firstRace = applyRaceOutcome(createDefaultProfile(), outcome({ position: 4 }), FIXED_DATE);
-    expect(firstRace.unlocked.map((part) => part.id)).toEqual(['engine-twin']);
+    const firstIds = firstRace.unlocked.map((item) => item.id);
+    expect(firstIds).toContain('engine-twin');
+    expect(firstIds).toContain('airframe-bush');
+    expect(firstIds).not.toContain('engine-pulse');
 
     const podium = applyRaceOutcome(firstRace.profile, outcome({ position: 3 }), FIXED_DATE);
-    expect(podium.unlocked.map((part) => part.id).sort()).toEqual(['engine-pulse', 'fuselage-heavy']);
+    const podiumIds = podium.unlocked.map((item) => item.id);
+    expect(podiumIds).toContain('engine-pulse');
+    expect(podiumIds).toContain('airframe-racer');
+    expect(podiumIds).toContain('airframe-cruiser');
 
-    const nothingNew = applyRaceOutcome(podium.profile, outcome({ position: 1 }), FIXED_DATE);
-    expect(nothingNew.unlocked).toEqual([]);
+    const third = applyRaceOutcome(podium.profile, outcome({ position: 1 }), FIXED_DATE);
+    expect(third.unlocked.map((item) => item.id)).toContain('airframe-seaplane');
   });
 
-  it('a first-race win unlocks both the twin and the pulse drive', () => {
+  it('a first-race win unlocks the podium rewards as well as the first-race ones', () => {
     const win = applyRaceOutcome(createDefaultProfile(), outcome({ position: 1 }), FIXED_DATE);
-    expect(win.unlocked.map((part) => part.id).sort()).toEqual(['engine-pulse', 'engine-twin']);
+    const ids = win.unlocked.map((item) => item.id);
+    expect(ids).toContain('engine-pulse');
+    expect(ids).toContain('engine-twin');
+    expect(ids).toContain('airframe-racer');
   });
 });
 

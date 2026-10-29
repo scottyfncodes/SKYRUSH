@@ -1,42 +1,67 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BUILD,
+  buildProblem,
   buildsEqual,
+  canFit,
+  changedSlots,
+  defaultBuildFor,
   isValidBuild,
+  legacyPaint,
+  migrateBuild,
   resolveBuild,
   withPart,
   type AircraftBuild,
 } from './build';
+import { AIRFRAMES, getAirframe } from './parts';
+import { FACTORY_SETUPS } from './setups';
+import { getTheme } from './paint';
 
 describe('isValidBuild', () => {
-  it('accepts the default build', () => {
-    expect(isValidBuild(DEFAULT_BUILD)).toBe(true);
+  it('accepts every airframe’s factory build and every factory setup', () => {
+    for (const airframe of AIRFRAMES) expect(isValidBuild(defaultBuildFor(airframe)), airframe.id).toBe(true);
+    for (const setup of FACTORY_SETUPS) expect(buildProblem(setup.build), setup.id).toBeNull();
   });
 
   it('rejects null, primitives and arrays', () => {
     expect(isValidBuild(null)).toBe(false);
     expect(isValidBuild(undefined)).toBe(false);
     expect(isValidBuild(42)).toBe(false);
-    expect(isValidBuild('fuselage-needle')).toBe(false);
+    expect(isValidBuild('airframe-sport')).toBe(false);
     expect(isValidBuild([])).toBe(false);
   });
 
-  it('rejects unknown ids', () => {
-    expect(isValidBuild({ ...DEFAULT_BUILD, fuselage: 'fuselage-nope' })).toBe(false);
-    expect(isValidBuild({ ...DEFAULT_BUILD, engine: 'engine-nope' })).toBe(false);
-    expect(isValidBuild({ ...DEFAULT_BUILD, wings: 'wings-nope' })).toBe(false);
-    expect(isValidBuild({ ...DEFAULT_BUILD, livery: 'livery-nope' })).toBe(false);
+  it('rejects unknown ids and ids in the wrong slot', () => {
+    expect(buildProblem({ ...DEFAULT_BUILD, airframe: 'airframe-nope' })).toEqual({
+      kind: 'unknown-airframe',
+    });
+    expect(buildProblem({ ...DEFAULT_BUILD, engine: 'engine-nope' })).toEqual({
+      kind: 'unknown-part',
+      category: 'engine',
+    });
+    expect(buildProblem({ ...DEFAULT_BUILD, engine: 'wings-compact' })).toEqual({
+      kind: 'unknown-part',
+      category: 'engine',
+    });
   });
 
-  it('rejects ids of the wrong part type in a slot', () => {
-    expect(isValidBuild({ ...DEFAULT_BUILD, fuselage: 'engine-twin' })).toBe(false);
-    expect(isValidBuild({ ...DEFAULT_BUILD, engine: 'wings-compact' })).toBe(false);
-    expect(isValidBuild({ ...DEFAULT_BUILD, wings: 'fuselage-needle' })).toBe(false);
+  it('rejects parts the airframe cannot take', () => {
+    const scout = defaultBuildFor(getAirframe('airframe-scout')!);
+    expect(buildProblem({ ...scout, gear: 'gear-floats' })).toEqual({
+      kind: 'incompatible',
+      category: 'gear',
+    });
+    expect(buildProblem({ ...scout, engine: 'engine-twin' })).toEqual({
+      kind: 'incompatible',
+      category: 'engine',
+    });
+    expect(canFit(scout, 'gear', 'gear-floats')).toBe(false);
+    expect(canFit(scout, 'gear', 'gear-tundra')).toBe(true);
   });
 
   it('rejects missing or non-string fields', () => {
-    const { livery: _livery, ...noLivery } = DEFAULT_BUILD;
-    expect(isValidBuild(noLivery)).toBe(false);
+    const { tail: _tail, ...noTail } = DEFAULT_BUILD;
+    expect(isValidBuild(noTail)).toBe(false);
     expect(isValidBuild({ ...DEFAULT_BUILD, engine: 3 })).toBe(false);
   });
 });
@@ -44,44 +69,71 @@ describe('isValidBuild', () => {
 describe('resolveBuild', () => {
   it('resolves every slot of a valid build', () => {
     const resolved = resolveBuild(DEFAULT_BUILD);
-    expect(resolved.fuselage.id).toBe(DEFAULT_BUILD.fuselage);
+    expect(resolved.airframe.id).toBe(DEFAULT_BUILD.airframe);
     expect(resolved.engine.id).toBe(DEFAULT_BUILD.engine);
-    expect(resolved.wings.id).toBe(DEFAULT_BUILD.wings);
-    expect(resolved.livery.id).toBe(DEFAULT_BUILD.livery);
+    expect(resolved.gear.id).toBe(DEFAULT_BUILD.gear);
   });
 
   it('throws on an invalid build', () => {
     expect(() => resolveBuild({ ...DEFAULT_BUILD, engine: 'engine-nope' })).toThrow(/Invalid aircraft build/);
-    expect(() => resolveBuild({ ...DEFAULT_BUILD, livery: '' })).toThrow();
   });
 });
 
-describe('withPart', () => {
-  it('swaps only the requested category and returns a new object', () => {
+describe('withPart / buildsEqual / changedSlots', () => {
+  it('swaps only the requested slot and returns a new object', () => {
     const next = withPart(DEFAULT_BUILD, 'engine', 'engine-twin');
     expect(next).not.toBe(DEFAULT_BUILD);
     expect(next.engine).toBe('engine-twin');
-    expect(next.fuselage).toBe(DEFAULT_BUILD.fuselage);
-    expect(next.wings).toBe(DEFAULT_BUILD.wings);
-    expect(next.livery).toBe(DEFAULT_BUILD.livery);
+    expect(changedSlots(DEFAULT_BUILD, next)).toEqual(['engine']);
     expect(DEFAULT_BUILD.engine).toBe('engine-efficient');
   });
 
-  it('swaps fuselage and wings independently', () => {
-    const a = withPart(DEFAULT_BUILD, 'fuselage', 'fuselage-heavy');
-    const b = withPart(a, 'wings', 'wings-compact');
-    expect(b).toEqual<AircraftBuild>({
-      ...DEFAULT_BUILD,
-      fuselage: 'fuselage-heavy',
-      wings: 'wings-compact',
-    });
-  });
-});
-
-describe('buildsEqual', () => {
   it('compares by value', () => {
     expect(buildsEqual(DEFAULT_BUILD, { ...DEFAULT_BUILD })).toBe(true);
     expect(buildsEqual(DEFAULT_BUILD, withPart(DEFAULT_BUILD, 'wings', 'wings-highlift'))).toBe(false);
-    expect(buildsEqual(DEFAULT_BUILD, { ...DEFAULT_BUILD, livery: 'livery-signal' })).toBe(false);
+  });
+});
+
+describe('migrateBuild (version 1 saves)', () => {
+  it('maps the original fuselages to airframes and keeps compatible parts', () => {
+    const migrated = migrateBuild({
+      fuselage: 'fuselage-allrounder',
+      engine: 'engine-twin',
+      wings: 'wings-compact',
+      livery: 'livery-glacier',
+    });
+    expect(migrated).toEqual<AircraftBuild>({
+      ...DEFAULT_BUILD,
+      engine: 'engine-twin',
+      wings: 'wings-compact',
+    });
+  });
+
+  it('falls back to factory parts for slots the new airframe cannot take', () => {
+    const migrated = migrateBuild({
+      fuselage: 'fuselage-needle',
+      engine: 'engine-twin',
+      wings: 'wings-highlift',
+    });
+    const racer = defaultBuildFor(getAirframe('airframe-racer')!);
+    expect(migrated).toEqual({ ...racer });
+    expect(
+      migrateBuild({ fuselage: 'fuselage-heavy', engine: 'engine-efficient', wings: 'wings-balanced' }),
+    ).toEqual({
+      ...defaultBuildFor(getAirframe('airframe-cruiser')!),
+      engine: 'engine-efficient',
+      wings: 'wings-balanced',
+    });
+  });
+
+  it('returns null for unrecognisable data', () => {
+    expect(migrateBuild(null)).toBeNull();
+    expect(migrateBuild({ fuselage: 'fuselage-nope' })).toBeNull();
+    expect(migrateBuild('nope')).toBeNull();
+  });
+
+  it('turns an old livery id into the theme of the same name', () => {
+    expect(legacyPaint({ livery: 'livery-glacier' })).toEqual(getTheme('livery-glacier')!.paint);
+    expect(legacyPaint({ livery: 'livery-unknown' })).toBeNull();
   });
 });

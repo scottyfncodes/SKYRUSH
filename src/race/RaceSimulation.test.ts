@@ -4,7 +4,9 @@ import { RaceSimulation, type RaceEvent, type Racer, type RacerConfig } from './
 import { createCircuit, lookOrientation } from '../course/circuit';
 import type { GateDefinition } from '../course/gates';
 import { AI_PERSONALITIES } from '../ai/AiPilot';
-import { DEFAULT_BUILD } from '../aircraft/build';
+import { DEFAULT_BUILD, defaultBuildFor } from '../aircraft/build';
+import { getAirframe } from '../aircraft/parts';
+import { flightParametersForBuild } from '../aircraft/performance';
 import { NEUTRAL_INPUT, type FlightInput } from '../flight/FlightModel';
 
 const circuit = createCircuit();
@@ -376,17 +378,17 @@ describe('crash and respawn', () => {
     expect(player.nextGate).toBe(5);
   });
 
-  it('a heavier fuselage pays a smaller crash penalty', () => {
-    const heavy = new RaceSimulation(
-      circuit,
-      [{ ...playerConfig, build: { ...DEFAULT_BUILD, fuselage: 'fuselage-heavy' } }],
-      { countdownSeconds: 0 },
-    );
+  it('a tougher airframe pays a smaller crash penalty', () => {
+    const cruiser = defaultBuildFor(getAirframe('airframe-cruiser')!);
+    const heavy = new RaceSimulation(circuit, [{ ...playerConfig, build: cruiser }], { countdownSeconds: 0 });
     heavy.step(DT, IDLE);
     const events = run(heavy, 20, { ...NEUTRAL_INPUT, pitch: -1 });
     const crash = events.find((event) => event.type === 'crash');
     expect(crash).toBeDefined();
-    expect(crash?.type === 'crash' && crash.penalty).toBe(Math.round(3 + 3 / 1.4));
+    expect(crash?.type === 'crash' && crash.penalty).toBe(
+      Math.round(3 + 3 / flightParametersForBuild(cruiser).durability),
+    );
+    expect(flightParametersForBuild(cruiser).durability).toBeGreaterThan(1.2);
   });
 });
 

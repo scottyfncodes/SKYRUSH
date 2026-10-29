@@ -16,7 +16,8 @@ import {
   type FlightState,
 } from './FlightModel';
 import { flightParametersForBuild, type FlightParameters } from '../aircraft/performance';
-import { DEFAULT_BUILD, withPart } from '../aircraft/build';
+import { DEFAULT_BUILD, defaultBuildFor, withPart } from '../aircraft/build';
+import { AIRFRAMES, getAirframe } from '../aircraft/parts';
 
 const DT = 1 / 120;
 const FLAT: FlightEnvironment = { terrainHeight: () => 0, ceiling: 900 };
@@ -511,10 +512,9 @@ describe('assisted steering', () => {
   });
 
   describe('bank response tuning', () => {
-    const FUSELAGES = ['fuselage-needle', 'fuselage-allrounder', 'fuselage-heavy'] as const;
-    const paramsFor = (fuselage: string) =>
-      flightParametersForBuild(withPart(DEFAULT_BUILD, 'fuselage', fuselage));
-    const HEAVY_PARAMS = paramsFor('fuselage-heavy');
+    const FUSELAGES = AIRFRAMES.map((airframe) => airframe.id);
+    const paramsFor = (airframe: string) => flightParametersForBuild(defaultBuildFor(getAirframe(airframe)!));
+    const HEAVY_PARAMS = paramsFor('airframe-cruiser');
     /** Runs assisted flight, calling `each` with the state and elapsed time after every step. */
     const fly = (
       state: FlightState,
@@ -557,6 +557,30 @@ describe('assisted steering', () => {
         });
         expect(peak, fuselage).toBeLessThan(MAX_ASSISTED_BANK * 1.01);
       }
+    });
+
+    it('extreme part combinations still settle on the bank limit without overshoot', () => {
+      const twitchy = flightParametersForBuild({
+        ...defaultBuildFor(getAirframe('airframe-scout')!),
+        frame: 'frame-composite',
+        tail: 'tail-vee',
+        wings: 'wings-compact',
+      });
+      const sluggish = flightParametersForBuild({
+        ...defaultBuildFor(getAirframe('airframe-cruiser')!),
+        frame: 'frame-reinforced',
+        tail: 'tail-big',
+        wings: 'wings-glider',
+      });
+      for (const params of [twitchy, sluggish]) {
+        let peak = 0;
+        fly(level(90, 2000), input({ roll: 1 }), 3, params, (s) => {
+          peak = Math.max(peak, s.bank);
+        });
+        expect(peak).toBeLessThan(MAX_ASSISTED_BANK * 1.01);
+        expect(peak).toBeGreaterThan(MAX_ASSISTED_BANK * 0.95);
+      }
+      expect(timeToHalfBank(twitchy)).toBeLessThan(timeToHalfBank(sluggish));
     });
 
     it('releasing a hard turn levels the wings promptly without swinging through level', () => {

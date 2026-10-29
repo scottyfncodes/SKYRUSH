@@ -1,3 +1,4 @@
+import { CATEGORY_LABELS } from '../aircraft/parts';
 import { Screen, button, clear, h } from './dom';
 import type { Standing } from '../race/RaceSimulation';
 import type { AppliedResult } from '../progression/rewards';
@@ -71,8 +72,14 @@ export class ResultsScreen extends Screen {
             'div',
             { className: 'results__unlocks', dataset: { testid: 'results-unlocks' } },
             h('span', { className: 'eyebrow', text: 'Newly unlocked' }),
-            ...applied.unlocked.map((part) =>
-              h('span', { className: 'chip', text: `${part.name}: now available to buy` }),
+            ...applied.unlocked.map((item) =>
+              h('span', {
+                className: `chip${item.kind === 'airframe' ? ' chip--aircraft' : ''}`,
+                text:
+                  item.kind === 'airframe'
+                    ? `${item.name} ${item.archetype.toLowerCase()}: in the hangar to buy`
+                    : `${item.name}: ${CATEGORY_LABELS[item.category].toLowerCase()} now available`,
+              }),
             ),
           )
         : null;
@@ -107,7 +114,7 @@ export class ResultsScreen extends Screen {
                   { className: 'badge-earned__text' },
                   h('strong', { text: `Badge earned: ${badge.name}` }),
                   h('span', {
-                    text: `. ${liveryForBadge(badge.id)?.name ?? 'new'} livery unlocked in the garage`,
+                    text: `. ${liveryForBadge(badge.id)?.name ?? 'new'} livery and colour unlocked in the paint shop`,
                   }),
                 ),
               ),
@@ -180,7 +187,7 @@ export class ResultsScreen extends Screen {
             testId: 'results-again',
             className: 'btn--replay',
           }),
-          button('Garage', this.callbacks.onGarage, { testId: 'results-garage' }),
+          button('Hangar', this.callbacks.onGarage, { testId: 'results-garage' }),
           button('Menu', this.callbacks.onMenu, { variant: 'ghost', testId: 'results-menu' }),
         ),
       ),

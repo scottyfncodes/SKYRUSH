@@ -13,6 +13,8 @@ export interface AiPersonality {
   callsign: string;
   style: AiStyle;
   build: AircraftBuild;
+  /** Livery theme id (cosmetic). */
+  livery: string;
   /** How early the pilot slows for corners (1 = textbook, <1 = late braking). */
   cornerCaution: number;
   /** Minimum corner speed as a fraction of top speed. */
@@ -36,11 +38,15 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'ORBIT',
     style: 'precision',
     build: {
-      fuselage: 'fuselage-allrounder',
+      airframe: 'airframe-sport',
+      frame: 'frame-standard',
       engine: 'engine-efficient',
+      prop: 'prop-three',
       wings: 'wings-balanced',
-      livery: 'livery-glacier',
+      tail: 'tail-standard',
+      gear: 'gear-light',
     },
+    livery: 'livery-glacier',
     cornerCaution: 0.9,
     cornerSpeedFloor: 0.62,
     boostHeatLimit: 0.6,
@@ -56,11 +62,15 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'VANDAL',
     style: 'aggressive',
     build: {
-      fuselage: 'fuselage-needle',
-      engine: 'engine-efficient',
-      wings: 'wings-compact',
-      livery: 'livery-signal',
+      airframe: 'airframe-scout',
+      frame: 'frame-standard',
+      engine: 'engine-tuned',
+      prop: 'prop-three',
+      wings: 'wings-elliptic',
+      tail: 'tail-standard',
+      gear: 'gear-light',
     },
+    livery: 'livery-signal',
     cornerCaution: 0.8,
     cornerSpeedFloor: 0.72,
     boostHeatLimit: 0.85,
@@ -76,11 +86,15 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'LONGSHOT',
     style: 'speed',
     build: {
-      fuselage: 'fuselage-heavy',
+      airframe: 'airframe-cruiser',
+      frame: 'frame-standard',
       engine: 'engine-twin',
+      prop: 'prop-three',
       wings: 'wings-balanced',
-      livery: 'livery-midnight',
+      tail: 'tail-twin',
+      gear: 'gear-retract',
     },
+    livery: 'livery-midnight',
     cornerCaution: 1.1,
     cornerSpeedFloor: 0.5,
     boostHeatLimit: 0.75,
