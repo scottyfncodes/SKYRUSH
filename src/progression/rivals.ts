@@ -28,7 +28,7 @@ export const RIVALS: readonly Rival[] = [
     name: 'Mira Castellan',
     callsign: 'ORBIT',
     temperament: 'Precise',
-    bio: 'Former survey pilot. Flies the cleanest line on the circuit and keeps a Mule cabin in her hangar for the long trips.',
+    bio: 'Former survey pilot. Flies the cleanest line on the circuit in a Meridian with a Mule cabin bolted in for the long trips.',
     prize: 'cabin-bush',
     grid: [
       'Clean lines win races. Try one.',
@@ -46,7 +46,7 @@ export const RIVALS: readonly Rival[] = [
     name: 'Dax Reyes',
     callsign: 'VANDAL',
     temperament: 'Reckless',
-    bio: 'Fastest thing on the coast and he will tell you so. Races a hot-rodded Wren and keeps a spare Needle nose for bragging rights.',
+    bio: 'Fastest thing on the coast and he will tell you so. Races a hot-rodded Wren with a Needle nose and a Meridian boom grafted on for bragging rights.',
     prize: 'nose-racer',
     grid: ['Try to keep up this time.', 'I will wave as I go past.', 'Hope you brought spare parts.'],
     gloat: ['Was that your top speed? Cute.', 'Saw you in my mirrors. Briefly.'],
@@ -57,7 +57,7 @@ export const RIVALS: readonly Rival[] = [
     name: 'Jun Okafor',
     callsign: 'LONGSHOT',
     temperament: 'Patient',
-    bio: 'Flies the heavy Bastion like it is on rails. Never first into a turn, rarely last out of one.',
+    bio: 'Flies a heavy Bastion with a Meridian nose welded on like it is on rails. Never first into a turn, rarely last out of one.',
     prize: 'boom-cruiser',
     grid: [
       'Big wings, long lines. Patience.',

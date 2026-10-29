@@ -18,12 +18,13 @@ import {
   type Texture,
 } from 'three';
 import { resolveBuild, type AircraftSetup, type ResolvedBuild } from '../aircraft/build';
-import { swatchColor, type Paint } from '../aircraft/paint';
-import type { WingPart } from '../aircraft/parts';
+import { factoryPaint, swatchColor, type Paint } from '../aircraft/paint';
+import { getAirframe, type SectionPart, type WingPart } from '../aircraft/parts';
 import { createGlowMaterial } from './materials';
 import { shapeForBuild, type AirframeShape } from './aircraft/airframes';
 import {
   StaticBatch,
+  bodyPoint,
   loftSurface,
   mirrorX,
   revolve,
@@ -85,6 +86,7 @@ const X_AXIS = new Vector3(1, 0, 0);
 
 const unitCylinder = new CylinderGeometry(1, 1, 1, 8, 1);
 const unitSphere = new SphereGeometry(1, 16, 12);
+const rivetHead = new SphereGeometry(1, 6, 4);
 
 /** Materials for one aircraft. Everything created here is disposed with the model. */
 class Paints {
@@ -280,7 +282,19 @@ const assemble = (
   const tips = paints.enamel(swatchColor(paint.tips), 0.32);
   const noseMat = paints.enamel(swatchColor(paint.nose), 0.3);
   const fabric = paints.fabric(frame.visual === 'light' ? primaryColor : swatchColor(paint.secondary));
-  const fabricPrimary = paints.fabric(primaryColor);
+
+  // As salvaged, the cabin wears the owner's paint and sections spliced on from
+  // other aircraft keep the factory paint they came with.
+  const salvage = paint.pattern === 'salvage';
+  const donorPaint = (section: SectionPart): Paint =>
+    salvage && section.source !== r.cabin.source ? factoryPaint(section.source) : paint;
+  const nosePaint = donorPaint(r.nose);
+  const boomPaint = donorPaint(r.boom);
+  const cowlSkin = paints.enamel(swatchColor(nosePaint.primary), frame.visual === 'composite' ? 0.24 : 0.36);
+  const cowlRing = paints.enamel(swatchColor(nosePaint.nose), 0.3);
+  const tailSkin = paints.enamel(swatchColor(boomPaint.primary), frame.visual === 'composite' ? 0.24 : 0.36);
+  const tailFabric = paints.fabric(swatchColor(boomPaint.primary));
+  const tailTips = paints.enamel(swatchColor(boomPaint.tips), 0.32);
   const darkMetal = paints.track(
     new MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.5, metalness: 0.75, envMapIntensity: 0.9 }),
   );
@@ -366,13 +380,38 @@ const assemble = (
   const bodyTailZ = bodyStations[bodyStations.length - 1]!.z;
   const bodyLength = bodyNoseZ - bodyTailZ;
   const widest = shape.stations.reduce((m, s) => Math.max(m, s.w + (s.top + s.bottom) / 2), 0);
+  const registrationOf = (designation: string, number: number) =>
+    `SR-${designation}·${String(number).padStart(2, '0')}`;
+  const designationOf = (section: SectionPart) => getAirframe(section.source)?.designation ?? '';
+  const splitV = (z: number) => Math.min(1, Math.max(0, (bodyNoseZ - z) / bodyLength));
+  const donors = [
+    { section: r.nose, paint: nosePaint, v0: 0, v1: splitV(shape.split[0]) },
+    { section: r.boom, paint: boomPaint, v0: splitV(shape.split[1]), v1: 1 },
+  ]
+    .filter((donor) => donor.paint !== paint)
+    .map(({ section, paint: donor, v0, v1 }) => ({
+      v0,
+      v1,
+      paint: donor,
+      registration: registrationOf(designationOf(section), donor.number),
+    }));
+  const special = r.nose.source !== r.cabin.source || r.boom.source !== r.cabin.source;
   const bodyTexture = createBodyTexture({
     paint,
     frame: frame.visual,
     length: bodyLength,
     circumference: Math.PI * widest,
-    registration: `SR-${airframe.designation}·${String(paint.number).padStart(2, '0')}`,
+    registration: registrationOf(airframe.designation, paint.number),
     canopyV: (bodyNoseZ - shape.canopy.z) / bodyLength,
+    donors,
+    seams: (shape.joints ?? []).map(splitV),
+    plate: special
+      ? [
+          `NOSE  ${designationOf(r.nose)}`,
+          `CABIN ${designationOf(r.cabin)}`,
+          `BOOM  ${designationOf(r.boom)}`,
+        ]
+      : undefined,
     exhaustStains: engineInNose,
     marks,
   });
@@ -411,6 +450,40 @@ const assemble = (
     const s = bodyAt(z);
     return s.y - s.bottom;
   };
+
+  // Splices: a bare-metal collar over each joint, wide enough to cover the step
+  // between two aircraft's sections, with a row of rivets along each edge.
+  for (const z of shape.joints ?? []) {
+    const half = 0.11;
+    const around = [z + half + 0.05, z + half, z, z - half, z - half - 0.05].map(bodyAt);
+    const w = Math.max(...around.map((s) => s.w)) * 1.04 + 0.012;
+    const top = Math.max(...around.map((s) => s.top)) * 1.04 + 0.012;
+    const bottom = Math.max(...around.map((s) => s.bottom)) * 1.04 + 0.012;
+    const at = (zz: number): BodyStation => {
+      const s = bodyAt(zz);
+      return { z: zz, w, top, bottom, y: s.y, square: s.square };
+    };
+    const tuck = (zz: number): BodyStation => {
+      const s = bodyAt(zz);
+      return { z: zz, w: s.w * 0.98, top: s.top * 0.98, bottom: s.bottom * 0.98, y: s.y, square: s.square };
+    };
+    const collar = [tuck(z + half + 0.03), at(z + half), at(z - half), tuck(z - half - 0.03)];
+    addStatic(sculptBody(collar, 6, 28), aluminium);
+    const point = new Vector3();
+    for (const edge of [z + half - 0.035, z - half + 0.035]) {
+      const s = sampleBody(collar, edge);
+      for (let j = 0; j < 18; j += 1) {
+        bodyPoint(s, ((j + 0.5) / 18) * Math.PI * 2, point);
+        batch.add(
+          rivetHead,
+          darkMetal,
+          new Matrix4()
+            .makeTranslation(point.x, point.y, point.z)
+            .multiply(new Matrix4().makeScale(0.018, 0.018, 0.018)),
+        );
+      }
+    }
+  }
 
   // --- Canopy -----------------------------------------------------------------------------
   const canopy = shape.canopy;
@@ -692,7 +765,7 @@ const assemble = (
     const pivot = hingePivot(hingeA, hingeB);
     const surface = loftSurface(stationsBetween(stations, hingeFrom + 0.01, hingeTo - 0.01), hinge, 1, 4);
     surface.applyMatrix4(matrix);
-    const attached = attachToPivots(surface, pivot, fabricPrimary, mirror);
+    const attached = attachToPivots(surface, pivot, tailFabric, mirror);
     root.add(pivot);
     if (mirror) root.add((attached.left.userData as { partner: Object3D }).partner);
     return attached;
@@ -705,7 +778,7 @@ const assemble = (
       stabSpan * 0.9,
       elevHinge,
       true,
-      primary,
+      tailSkin,
     );
     elevators.push(left, right!);
     if (tail.visual === 'vee') rudders.push(left, right!);
@@ -729,11 +802,11 @@ const assemble = (
       .makeTranslation(0, shape.tail.finY, 0)
       .multiply(new Matrix4().makeRotationZ(Math.PI / 2));
     const finTipFrom = finHeight * 0.8;
-    const { left } = addTailSurface(finStations, finMatrix, 0.05, finTipFrom - 0.05, 0.6, false, primary);
+    const { left } = addTailSurface(finStations, finMatrix, 0.05, finTipFrom - 0.05, 0.6, false, tailSkin);
     rudders.push(left);
     const tipGeometry = loftSurface(stationsBetween(finStations, finTipFrom, finStations[7]!.x), 0, 1, 5);
     tipGeometry.applyMatrix4(finMatrix);
-    addStatic(tipGeometry, tips);
+    addStatic(tipGeometry, tailTips);
   } else if (tail.visual === 'twin') {
     const finStations: SurfaceStation[] = [];
     for (let i = 0; i <= 8; i += 1) {
@@ -751,7 +824,7 @@ const assemble = (
     const finMatrix = new Matrix4()
       .makeTranslation(tipStab.x, shape.tail.y, 0.15 * ts)
       .multiply(new Matrix4().makeRotationZ(Math.PI / 2));
-    const { left, right } = addTailSurface(finStations, finMatrix, -0.3 * ts, 0.8 * ts, 0.62, true, tips);
+    const { left, right } = addTailSurface(finStations, finMatrix, -0.3 * ts, 0.8 * ts, 0.62, true, tailTips);
     rudders.push(left, right!);
   }
 
@@ -871,8 +944,10 @@ const assemble = (
     }
     if (tailCone > 0) rearProfile.push([z0 - tailCone * 0.5, r0 * 0.78], [z0 - tailCone, 0.04]);
     const place = (g: BufferGeometry) => g.translate(x, y, 0);
-    addStatic(place(revolve(frontProfile, 24)), noseMat);
-    addStatic(place(revolve(rearProfile, 24)), primary);
+    // A nose engine's cowl belongs to the nose section, so it wears that section's paint.
+    const inNose = x === 0 && engineInNose;
+    addStatic(place(revolve(frontProfile, 24)), inNose ? cowlRing : noseMat);
+    addStatic(place(revolve(rearProfile, 24)), inNose ? cowlSkin : primary);
     // Engine face behind the cowl opening.
     const face = new CircleGeometry(front * 0.98, 24);
     face.translate(x, y, z0 + L - 0.04);

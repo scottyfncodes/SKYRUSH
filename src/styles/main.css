@@ -1102,6 +1102,24 @@ p {
   color: var(--amber);
   font-weight: 500;
 }
+/* Builder's plate: stamped bare metal, the same plate painted on the Special's cabin. */
+.nameplate__donors {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 12px;
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: #2b2d31;
+  background: #c9ccd0;
+  border: 1px solid #6d7178;
+  border-radius: 2px;
+}
 
 /* Flight card (ivory spec sheet) */
 .garage-stats {
@@ -2754,6 +2772,12 @@ p {
   .nameplate__character {
     font-size: 11px;
     margin-top: 2px;
+  }
+  .nameplate__donors {
+    font-size: 8px;
+    gap: 0 8px;
+    margin-top: 3px;
+    padding: 2px 6px;
   }
   .garage-detail {
     padding: var(--space-2) var(--space-3);

@@ -127,7 +127,7 @@ describe.each(COURSES.map((course) => [course.id]))('%s', (id) => {
       expect(racer.crashes, racer.config.id).toBe(0);
       expect(racer.missedGates, racer.config.id).toBe(0);
     }
-    // ORBIT flies the player's starting build: par is a stretch goal, not a gimme.
+    // ORBIT flies a Meridian with a Mule cabin, close to the starting build: par is a stretch goal, not a gimme.
     const orbit = ai.find((racer) => racer.config.id === 'ai-precision')!;
     expect(circuit.parTime).toBeGreaterThan(orbit.finishTime);
     expect(circuit.parTime).toBeLessThan(orbit.finishTime * 1.1);

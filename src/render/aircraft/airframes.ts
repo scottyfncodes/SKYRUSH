@@ -59,6 +59,8 @@ export interface AirframeShape {
   scoop?: { z: number; length: number };
   /** Radio mast behind the canopy, with a wire to the fin. */
   mast?: { z: number };
+  /** Where sections from different aircraft are spliced together (z), each under a riveted collar. */
+  joints?: number[];
 }
 
 type StockVisual = Exclude<Airframe['visual'], 'custom'>;
@@ -201,8 +203,9 @@ const visualOf = (category: 'nose' | 'cabin' | 'boom', id: string): StockVisual 
 /**
  * A fuselage composed from three aircraft's sections. The cabin keeps its own frame
  * (canopy, wing, gear and engine pylon sockets); the nose and tail boom are moved to
- * meet it and scaled so each joint matches the cabin's section, then the body is
- * swept through all three so the joins flow instead of stepping.
+ * meet it and scaled most of the way to the cabin's section. The rest of the mismatch
+ * is left as a step at each splice, which the model covers with a riveted collar, so
+ * a Special looks bolted together from other aircraft rather than built in one piece.
  */
 export const composeShape = (
   noseVisual: StockVisual,
@@ -218,9 +221,13 @@ export const composeShape = (
   const back = sampleBody(C.stations, cBack);
   const noseJoint = sampleBody(N.stations, N.split[0]);
   const boomJoint = sampleBody(B.stations, B.split[1]);
-  const clampScale = (k: number) => Math.min(1.45, Math.max(0.7, k));
+  // Close 65% of the size difference: enough to bolt on, not enough to hide the seam.
+  const clampScale = (k: number) => 1 + (Math.min(1.45, Math.max(0.7, k)) - 1) * 0.65;
   const kn = clampScale(size(front) / size(noseJoint));
   const kb = clampScale(size(back) / size(boomJoint));
+  const joints: number[] = [];
+  if (noseVisual !== cabinVisual) joints.push(cFront);
+  if (boomVisual !== cabinVisual) joints.push(cBack);
 
   const nose: BodyStation[] = N.stations
     .filter((station) => station.z > N.split[0] + 0.05)
@@ -232,6 +239,16 @@ export const composeShape = (
       bottom: station.bottom * kn,
       y: front.y + ((station.y ?? 0) - noseJoint.y) * kn,
     }));
+  // Each donor's own section right at the splice, so the skin steps there instead of blending.
+  const scaled = (sample: BodySample, z: number, k: number, y: number): BodyStation => ({
+    z,
+    w: sample.w * k,
+    top: sample.top * k,
+    bottom: sample.bottom * k,
+    y,
+    square: sample.square,
+  });
+  if (noseVisual !== cabinVisual) nose.push(scaled(noseJoint, cFront + 0.04, kn, front.y));
   const cabin: BodyStation[] = [
     front,
     ...C.stations.filter((station) => station.z < cFront - 0.05 && station.z > cBack + 0.05),
@@ -247,6 +264,7 @@ export const composeShape = (
       bottom: station.bottom * kb,
       y: back.y + ((station.y ?? 0) - boomJoint.y) * kb,
     }));
+  if (boomVisual !== cabinVisual) boom.unshift(scaled(boomJoint, cBack - 0.04, kb, back.y));
   const boomZ = (z: number) => cBack + (z - B.split[1]);
   const boomY = (y: number) => back.y + (y - boomJoint.y) * kb;
   return {
@@ -265,6 +283,7 @@ export const composeShape = (
     },
     gear: { ...C.gear, tailZ: boomZ(B.gear.tailZ), tailY: boomY(B.gear.tailY) },
     mast: C.mast ? { z: Math.max(C.mast.z, cBack + 0.3) } : undefined,
+    joints,
   };
 };
 

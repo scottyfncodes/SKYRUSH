@@ -35,6 +35,16 @@ export interface BodyLiveryOptions {
   exhaustStains: boolean;
   /** Wins, painted as small gate marks under the canopy. */
   marks: number;
+  /**
+   * Sections spliced on from other aircraft that keep their old paint ('As salvaged'):
+   * their stretch of the body (v, nose 0 to tail 1), that paint and the registration
+   * they used to carry, which shows faintly through the overpaint.
+   */
+  donors?: { v0: number; v1: number; paint: Paint; registration: string }[];
+  /** Lines stamped on the builder's plate by the cabin door (sections from more than one aircraft). */
+  plate?: string[];
+  /** Where splice collars cover the body (v), so the race number is kept clear of them. */
+  seams?: number[];
 }
 
 const W = 512;
@@ -52,12 +62,11 @@ export const createBodyTexture = (options: BodyLiveryOptions): Texture => {
   return texture;
 };
 
-const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void => {
-  const { paint } = o;
+/** Base colour, belly and pattern for one paint, over the whole canvas (clip to paint a section). */
+const paintScheme = (ctx: CanvasRenderingContext2D, paint: Paint): void => {
   const primary = swatchColor(paint.primary);
   const secondary = hex(swatchColor(paint.secondary));
   const accent = hex(swatchColor(paint.accent));
-  const nose = hex(swatchColor(paint.nose));
   const px = (u: number) => u * W;
   const py = (v: number) => v * H;
   /** Fills a u-range on both sides symmetrically about the top (u = 0.5). */
@@ -130,7 +139,30 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
       break;
     }
     case 'plain':
+    case 'salvage':
       break;
+  }
+};
+
+const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void => {
+  const { paint } = o;
+  const accent = hex(swatchColor(paint.accent));
+  const donors = o.donors ?? [];
+  const donorAt = (v: number) => donors.find((donor) => v >= donor.v0 && v <= donor.v1);
+  /** The primary colour under a point, so markings stay readable on a donor section. */
+  const primaryAt = (v: number): number => swatchColor(donorAt(v)?.paint.primary ?? paint.primary);
+  const nose = hex(swatchColor(donorAt(0)?.paint.nose ?? paint.nose));
+  const px = (u: number) => u * W;
+  const py = (v: number) => v * H;
+
+  paintScheme(ctx, paint);
+  for (const donor of donors) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, py(donor.v0), W, py(donor.v1 - donor.v0));
+    ctx.clip();
+    paintScheme(ctx, donor.paint);
+    ctx.restore();
   }
 
   // Nose band in the nose colour where the cowl meets the fuselage.
@@ -230,10 +262,16 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
     ctx.restore();
   };
 
+  if (paint.pattern === 'salvage') paintSalvage(ctx, o, onFlank);
+  if (o.plate) paintPlate(ctx, o, o.plate, onFlank, primaryAt);
+
   // Race number in a meatball roundel on the rear fuselage.
-  const numberV = Math.min(0.62, o.canopyV + 0.2);
-  const discColor = luminance(primary) > 0.55 ? '#17233b' : '#f1e8d4';
-  const numberColor = luminance(primary) > 0.55 ? '#f1e8d4' : '#17233b';
+  let numberV = Math.min(0.62, o.canopyV + 0.2);
+  for (const seam of o.seams ?? []) {
+    if (Math.abs(numberV - seam) < 0.065) numberV = Math.min(0.75, seam + 0.07);
+  }
+  const discColor = luminance(primaryAt(numberV)) > 0.55 ? '#17233b' : '#f1e8d4';
+  const numberColor = luminance(primaryAt(numberV)) > 0.55 ? '#f1e8d4' : '#17233b';
   for (const side of [1, -1] as const) {
     onFlank(side, 0.25, numberV, () => {
       ctx.fillStyle = discColor;
@@ -251,7 +289,7 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
     });
     // Registration toward the tail.
     onFlank(side, 0.27, 0.84, () => {
-      ctx.fillStyle = contrastOn(primary);
+      ctx.fillStyle = contrastOn(primaryAt(0.84));
       ctx.font = `600 0.17px 'Courier New', monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -259,7 +297,7 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
     });
     // Maintenance stencil by the firewall.
     onFlank(side, 0.2, 0.06, () => {
-      ctx.fillStyle = contrastOn(primary);
+      ctx.fillStyle = contrastOn(primaryAt(0.06));
       ctx.globalAlpha = 0.7;
       ctx.font = `600 0.07px 'Courier New', monospace`;
       ctx.textAlign = 'left';
@@ -272,7 +310,7 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
   const marks = Math.min(12, Math.max(0, Math.floor(o.marks)));
   if (marks > 0) {
     onFlank(1, 0.36, o.canopyV - 0.04, () => {
-      ctx.strokeStyle = contrastOn(primary);
+      ctx.strokeStyle = contrastOn(primaryAt(o.canopyV));
       ctx.lineWidth = 0.022;
       for (let i = 0; i < marks; i += 1) {
         const x = i * 0.13;
@@ -280,6 +318,119 @@ const paintBody = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions): void =>
       }
     });
   }
+};
+
+type Flank = (side: 1 | -1, u: number, v: number, draw: () => void) => void;
+
+const PRIMER = '#9ea567';
+const BARE_METAL = '#b7bcc2';
+const RIVET = 'rgba(20,20,24,0.45)';
+
+/** Small repeatable pseudo-random sequence, so the same aircraft always wears the same patches. */
+const sequence = (seed: number) => {
+  let state = (seed * 2654435761 + 1013904223) >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+};
+
+/**
+ * 'As salvaged' wear: primer patches and a bare aluminium repair panel, and the old
+ * registration of every donor section showing through its overpaint.
+ */
+const paintSalvage = (ctx: CanvasRenderingContext2D, o: BodyLiveryOptions, onFlank: Flank): void => {
+  const random = sequence(o.paint.number + 7);
+  const patch = (u: number, v: number, w: number, h: number, color: string) => {
+    const x = u * W;
+    const y = v * H;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w * W, h * H);
+    ctx.fillStyle = RIVET;
+    for (let i = 0; i <= w * W; i += 7) {
+      ctx.fillRect(x + i, y + 1, 2, 2);
+      ctx.fillRect(x + i, y + h * H - 3, 2, 2);
+    }
+    for (let j = 0; j <= h * H; j += 7) {
+      ctx.fillRect(x + 1, y + j, 2, 2);
+      ctx.fillRect(x + w * W - 3, y + j, 2, 2);
+    }
+  };
+  // Two primer patches on the left flank and spine, one bare panel on the right.
+  patch(
+    0.16 + random() * 0.14,
+    0.2 + random() * 0.18,
+    0.05 + random() * 0.04,
+    0.04 + random() * 0.03,
+    PRIMER,
+  );
+  patch(
+    0.4 + random() * 0.08,
+    0.52 + random() * 0.16,
+    0.04 + random() * 0.03,
+    0.05 + random() * 0.03,
+    PRIMER,
+  );
+  patch(
+    0.62 + random() * 0.14,
+    0.3 + random() * 0.2,
+    0.06 + random() * 0.03,
+    0.035 + random() * 0.02,
+    BARE_METAL,
+  );
+
+  for (const donor of o.donors ?? []) {
+    // The registration the section flew under before, ghosting through a brushed overpaint.
+    const v = 0.84 >= donor.v0 && 0.84 <= donor.v1 ? 0.84 : (donor.v0 + donor.v1) / 2;
+    const base = swatchColor(donor.paint.primary);
+    for (const side of [1, -1] as const) {
+      onFlank(side, 0.34, v, () => {
+        ctx.font = `600 0.17px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = contrastOn(base);
+        ctx.globalAlpha = 0.6;
+        ctx.fillText(donor.registration, 0, 0);
+        const width = ctx.measureText(donor.registration).width + 0.12;
+        ctx.globalAlpha = 0.72;
+        ctx.fillStyle = hex(base);
+        ctx.fillRect(-width / 2, -0.13, width, 0.26);
+        ctx.globalAlpha = 1;
+      });
+    }
+  }
+};
+
+/** The builder's plate by the cabin door: stamped bare metal listing where each section came from. */
+const paintPlate = (
+  ctx: CanvasRenderingContext2D,
+  o: BodyLiveryOptions,
+  lines: string[],
+  onFlank: Flank,
+  primaryAt: (v: number) => number,
+): void => {
+  onFlank(-1, 0.3, Math.min(0.7, o.canopyV + 0.07), () => {
+    ctx.fillStyle = '#c9ccd0';
+    ctx.fillRect(0, -0.1, 0.4, 0.2);
+    ctx.strokeStyle = contrastOn(primaryAt(o.canopyV)) === '#17233b' ? '#2b2d31' : '#6d7178';
+    ctx.lineWidth = 0.008;
+    ctx.strokeRect(0, -0.1, 0.4, 0.2);
+    ctx.fillStyle = '#2b2d31';
+    for (const [x, y] of [
+      [0.02, -0.08],
+      [0.38, -0.08],
+      [0.02, 0.08],
+      [0.38, 0.08],
+    ] as const) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.008, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.font = `700 0.042px 'Courier New', monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    lines.forEach((line, i) => ctx.fillText(line, 0.045, -0.05 + i * 0.05));
+  });
 };
 
 /** Insignia decal texture (square, transparent background). */

@@ -131,10 +131,11 @@ export class RaceStage {
       penalties: 0,
       style: { score: 0, multiplier: 1, comboTime: 0, rings: 0, ringTotal: circuit.rings.length },
     };
+    // Rivals fly as salvaged: their own colours on the cabin, donor paint on the rest.
     const aiPaints = new Map(
       AI_PERSONALITIES.map((ai) => [
         ai.id,
-        { ...(getTheme(ai.livery)?.paint ?? factoryPaint(ai.build.airframe)) },
+        { ...(getTheme(ai.livery)?.paint ?? factoryPaint(ai.build.airframe)), pattern: 'salvage' as const },
       ]),
     );
     for (const config of this.configs) {
