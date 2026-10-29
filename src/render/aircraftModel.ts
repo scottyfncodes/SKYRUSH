@@ -527,7 +527,7 @@ const assemble = (
     const plate = new BoxGeometry(hingeA.distanceTo(hingeB), 0.025, 0.32);
     plate.translate(0, 0.012, -0.16);
     plate.applyMatrix4(pivot.matrix);
-    const { left, right } = attachToPivots(plate, pivot, darkMetal, true);
+    const { left, right } = attachToPivots(plate, pivot, primary, true);
     root.add(pivot, (left.userData as { partner: Object3D }).partner);
     airbrakes.push(left, right!);
   }

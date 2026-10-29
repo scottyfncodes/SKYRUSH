@@ -1,13 +1,13 @@
 {
   "name": "SKYRUSH",
   "short_name": "SKYRUSH",
-  "description": "Build a custom racing aircraft and fly the Caldera Ridge circuit at full speed.",
+  "description": "Collect six propeller aircraft, tune every part and race them over coast, canyon and alpine courses.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#0f141d",
-  "theme_color": "#0f141d",
+  "background_color": "#0d1524",
+  "theme_color": "#0d1524",
   "icons": [
     { "src": "skyrush-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "skyrush-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
