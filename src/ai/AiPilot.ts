@@ -39,6 +39,9 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     style: 'precision',
     build: {
       airframe: 'airframe-sport',
+      nose: 'nose-sport',
+      cabin: 'cabin-sport',
+      boom: 'boom-sport',
       frame: 'frame-standard',
       engine: 'engine-efficient',
       prop: 'prop-three',
@@ -63,6 +66,9 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     style: 'aggressive',
     build: {
       airframe: 'airframe-scout',
+      nose: 'nose-scout',
+      cabin: 'cabin-scout',
+      boom: 'boom-scout',
       frame: 'frame-standard',
       engine: 'engine-tuned',
       prop: 'prop-three',
@@ -87,6 +93,9 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     style: 'speed',
     build: {
       airframe: 'airframe-cruiser',
+      nose: 'nose-cruiser',
+      cabin: 'cabin-cruiser',
+      boom: 'boom-cruiser',
       frame: 'frame-standard',
       engine: 'engine-twin',
       prop: 'prop-three',

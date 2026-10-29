@@ -21,7 +21,7 @@ import { resolveBuild, type AircraftSetup, type ResolvedBuild } from '../aircraf
 import { swatchColor, type Paint } from '../aircraft/paint';
 import type { WingPart } from '../aircraft/parts';
 import { createGlowMaterial } from './materials';
-import { shapeFor, type AirframeShape } from './aircraft/airframes';
+import { shapeForBuild, type AirframeShape } from './aircraft/airframes';
 import {
   StaticBatch,
   loftSurface,
@@ -245,17 +245,23 @@ export const buildAircraftModel = (
   options: AircraftModelOptions = {},
 ): AircraftModelHandles => {
   const resolved = resolveBuild(setup.build);
-  return assemble(resolved, setup.paint, setup.marks ?? 0, options.envMap ?? null);
+  return assemble(
+    resolved,
+    shapeForBuild(setup.build),
+    setup.paint,
+    setup.marks ?? 0,
+    options.envMap ?? null,
+  );
 };
 
 const assemble = (
   r: ResolvedBuild,
+  shape: AirframeShape,
   paint: Paint,
   marks: number,
   envMap: Texture | null,
 ): AircraftModelHandles => {
   const { airframe, frame, engine, prop, wings, tail, gear } = r;
-  const shape: AirframeShape = shapeFor(airframe);
   const root = new Group();
   root.name = `aircraft-${airframe.id}`;
   const paints = new Paints(envMap);
@@ -750,7 +756,8 @@ const assemble = (
   }
 
   // --- Engines and propellers --------------------------------------------------------------
-  const propRadius = (prop.visual.diameter / 2) * shape.prop * (engine.visual.twin ? 0.82 : 1);
+  const pods = engine.visual.pod === true;
+  const propRadius = (prop.visual.diameter / 2) * shape.prop * (pods ? 1.05 : engine.visual.twin ? 0.82 : 1);
   const bladeMaterial = paints.track(
     new MeshStandardMaterial({
       color: 0x24262a,
@@ -967,6 +974,27 @@ const assemble = (
   if (engineInNose) {
     const r0 = Math.max(firewall.w, (firewall.top + firewall.bottom) / 2) * shape.cowl;
     engineUnit(0, firewall.y ?? 0, firewall.z, Math.max(r0, firewall.w), 0);
+  } else if (pods) {
+    // Thunderpods: huge engines slung under the wings on outriggers, reaching well past the nose line.
+    const s = stationAt(ws, span * Math.min(0.5, shape.nacelle + 0.1));
+    const r0 = 0.74 * shape.cowl;
+    const y = s.y - r0 - 0.18;
+    const z0 = s.le + 0.9;
+    for (const side of [1, -1] as const) {
+      engineUnit(side * s.x, y, z0, r0, 3.4);
+      // Outrigger: a faired pylon from the wing to the pod, braced fore and aft.
+      const top = new Vector3(side * s.x, s.y - 0.04, s.le - s.chord * 0.3);
+      rod(top, new Vector3(side * s.x, y + r0 * 0.8, z0 - 0.8), 0.07, darkMetal);
+      rod(
+        top.clone().setZ(s.le - s.chord * 0.85),
+        new Vector3(side * s.x, y + r0 * 0.8, z0 - 2.4),
+        0.06,
+        darkMetal,
+      );
+      const pylon = new BoxGeometry(0.1, Math.max(0.1, s.y - (y + r0)), s.chord * 0.7);
+      pylon.translate(side * s.x, (s.y + y + r0) / 2, s.le - s.chord * 0.45);
+      addStatic(pylon, primary);
+    }
   } else if (engine.visual.twin) {
     const s = stationAt(ws, span * shape.nacelle);
     const r0 = 0.42 * shape.cowl;

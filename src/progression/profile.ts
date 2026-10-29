@@ -5,6 +5,8 @@ import {
   isValidBuild,
   legacyPaint,
   migrateBuild,
+  effectiveAirframe,
+  withSection,
   type AircraftBuild,
   type AircraftSetup,
 } from '../aircraft/build';
@@ -17,6 +19,7 @@ import {
   getItem,
   getPartIn,
   isCompatible,
+  isSectionCategory,
   type Airframe,
   type PartCategory,
   type ShopItem,
@@ -32,6 +35,7 @@ import {
 } from '../aircraft/paint';
 import { clamp, clamp01 } from '../core/math';
 import { isBadgeId } from './badges';
+import { RIVAL_IDS } from './rivals';
 import { DEFAULT_COURSE_ID, isCourseId } from '../course/courses';
 
 export const STARTING_CREDITS = 2500;
@@ -107,6 +111,13 @@ export interface PlayerProfile {
   badges: string[];
   /** Best single-race progress (0..1) toward each badge, for "next unlock" hints. */
   badgeProgress: Record<string, number>;
+  /** Head-to-head challenge record against each rival pilot. */
+  rivals: Record<string, RivalRecord>;
+}
+
+export interface RivalRecord {
+  wins: number;
+  losses: number;
 }
 
 export const DEFAULT_SETTINGS: PlayerSettings = {
@@ -164,6 +175,7 @@ export const createDefaultProfile = (): PlayerProfile => {
     bestMultiplier: 1,
     badges: [],
     badgeProgress: {},
+    rivals: {},
   };
 };
 
@@ -197,6 +209,10 @@ export const isUnlockRuleMet = (profile: PlayerProfile, item: ShopItem): boolean
       return profile.wins >= rule.count;
     case 'style':
       return profile.bestStyle >= rule.score;
+    case 'airframe':
+      return isOwned(profile, rule.airframe);
+    case 'rival':
+      return isOwned(profile, rule.airframe) || (profile.rivals[rule.rival]?.wins ?? 0) > 0;
   }
 };
 
@@ -216,9 +232,11 @@ export const partStatus = (
     if (profile.activeAircraft === item.id) return 'installed';
     if (isOwned(profile, item.id)) return 'owned';
   } else {
-    const airframe = getAirframe(airframeId);
-    if (!airframe || !isCompatible(airframe, item)) return 'incompatible';
     const entry = profile.hangar[airframeId];
+    // Sections are judged against the jig itself; everything else against what the sections allow.
+    const airframe =
+      entry && !isSectionCategory(item.category) ? effectiveAirframe(entry.build) : getAirframe(airframeId);
+    if (!airframe || !isCompatible(airframe, item)) return 'incompatible';
     if (entry && entry.build[item.category] === item.id) return 'installed';
     if (isOwned(profile, item.id)) return 'owned';
   }
@@ -239,6 +257,8 @@ export const purchasePart = (profile: PlayerProfile, id: string): PurchaseResult
   const item = getItem(id);
   if (!item) return { ok: false, reason: 'unknown-part' };
   if (isOwned(profile, id)) return { ok: false, reason: 'already-owned' };
+  // Sections come with their aircraft or from rivals; they are never sold on their own.
+  if (item.kind === 'part' && isSectionCategory(item.category)) return { ok: false, reason: 'locked' };
   if (!isAvailable(profile, item)) return { ok: false, reason: 'locked' };
   if (profile.credits < item.price) return { ok: false, reason: 'insufficient-credits' };
   const owned = new Set(profile.ownedParts);
@@ -267,18 +287,24 @@ export const installPart = (
   if (!part || part.kind !== 'part') return { ok: false, reason: 'unknown-part' };
   if (part.category !== category) return { ok: false, reason: 'wrong-category' };
   const entry = activeEntry(profile);
-  const airframe = getAirframe(entry.build.airframe);
+  const section = isSectionCategory(part.category);
+  const airframe = section ? getAirframe(entry.build.airframe) : effectiveAirframe(entry.build);
   if (!airframe || !isCompatible(airframe, part)) return { ok: false, reason: 'incompatible' };
   if (!isOwned(profile, partId)) return { ok: false, reason: 'not-owned' };
   if (entry.build[category] === partId) return { ok: true, profile };
+  // Swapping a section can leave components that no longer fit: they fall back to owned
+  // parts that do (the factory parts of the section's aircraft are owned with it).
+  const build = section
+    ? withSection(entry.build, part.category as 'nose' | 'cabin' | 'boom', partId, (id) =>
+        isOwned(profile, id),
+      )
+    : { ...entry.build, [category]: partId };
+  if (missingParts(profile, build).length > 0) return { ok: false, reason: 'not-owned' };
   return {
     ok: true,
     profile: {
       ...profile,
-      hangar: {
-        ...profile.hangar,
-        [airframe.id]: { ...entry, build: { ...entry.build, [category]: partId } },
-      },
+      hangar: { ...profile.hangar, [entry.build.airframe]: { ...entry, build } },
     },
   };
 };
@@ -577,6 +603,15 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     }
   }
 
+  const rivals: Record<string, RivalRecord> = {};
+  if (typeof data.rivals === 'object' && data.rivals !== null && !Array.isArray(data.rivals)) {
+    for (const [id, value] of Object.entries(data.rivals as Record<string, unknown>)) {
+      if (!RIVAL_IDS.has(id) || typeof value !== 'object' || value === null) continue;
+      const record = value as Record<string, unknown>;
+      rivals[id] = { wins: positiveInt(record.wins), losses: positiveInt(record.losses) };
+    }
+  }
+
   return {
     version: 2,
     credits,
@@ -601,6 +636,7 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
         : 1,
     badges,
     badgeProgress,
+    rivals,
   };
 };
 

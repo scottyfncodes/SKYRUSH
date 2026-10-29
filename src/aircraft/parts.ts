@@ -9,9 +9,24 @@
  * See docs/FLIGHT_MODEL.md and docs/AIRCRAFT.md.
  */
 
-export type PartCategory = 'frame' | 'engine' | 'prop' | 'wings' | 'tail' | 'gear';
+/** Fuselage sections: every aircraft is a nose, a cabin and a tail boom. */
+export type SectionCategory = 'nose' | 'cabin' | 'boom';
+export type ComponentCategory = 'frame' | 'engine' | 'prop' | 'wings' | 'tail' | 'gear';
+export type PartCategory = SectionCategory | ComponentCategory;
 
-export const PART_CATEGORIES: readonly PartCategory[] = ['frame', 'engine', 'prop', 'wings', 'tail', 'gear'];
+export const SECTION_CATEGORIES: readonly SectionCategory[] = ['nose', 'cabin', 'boom'];
+export const COMPONENT_CATEGORIES: readonly ComponentCategory[] = [
+  'frame',
+  'engine',
+  'prop',
+  'wings',
+  'tail',
+  'gear',
+];
+export const PART_CATEGORIES: readonly PartCategory[] = [...SECTION_CATEGORIES, ...COMPONENT_CATEGORIES];
+
+export const isSectionCategory = (category: PartCategory): category is SectionCategory =>
+  category === 'nose' || category === 'cabin' || category === 'boom';
 
 export type UnlockRule =
   | { kind: 'default' }
@@ -19,7 +34,11 @@ export type UnlockRule =
   | { kind: 'races'; count: number }
   | { kind: 'podium'; count: number }
   | { kind: 'wins'; count: number }
-  | { kind: 'style'; score: number };
+  | { kind: 'style'; score: number }
+  /** Comes with an aircraft (sections): not sold on its own. */
+  | { kind: 'airframe'; airframe: string }
+  /** Comes with an aircraft, or can be won from a rival in a challenge race. */
+  | { kind: 'rival'; airframe: string; rival: string };
 
 /** Fields shared by everything the hangar sells. */
 interface CatalogueItem {
@@ -46,9 +65,10 @@ export type AirframeId =
   | 'airframe-racer'
   | 'airframe-bush'
   | 'airframe-seaplane'
-  | 'airframe-cruiser';
+  | 'airframe-cruiser'
+  | 'airframe-custom';
 
-export type Archetype = 'Scout' | 'Sport' | 'Racer' | 'Bush plane' | 'Seaplane' | 'Heavy cruiser';
+export type Archetype = 'Scout' | 'Sport' | 'Racer' | 'Bush plane' | 'Seaplane' | 'Heavy cruiser' | 'Kitbash';
 
 export interface Airframe extends CatalogueItem {
   id: AirframeId;
@@ -56,7 +76,7 @@ export interface Airframe extends CatalogueItem {
   archetype: Archetype;
   /** Registration-style designation painted on the tail. */
   designation: string;
-  visual: 'scout' | 'sport' | 'racer' | 'bush' | 'seaplane' | 'cruiser';
+  visual: 'scout' | 'sport' | 'racer' | 'bush' | 'seaplane' | 'cruiser' | 'custom';
   /** Empty structure mass before parts (kg). */
   mass: number;
   dragArea: number;
@@ -98,6 +118,8 @@ export interface EnginePart extends CatalogueItem {
     scoop: boolean;
     /** Engines on wing nacelles instead of the nose. */
     twin: boolean;
+    /** Oversized racing pods on outriggers (implies twin). */
+    pod?: boolean;
   };
   mass: number; // total, both engines for a twin
   thrust: number; // N at full throttle at the reference airspeed
@@ -194,7 +216,15 @@ export interface GearPart extends CatalogueItem {
   look: string;
 }
 
-export type AircraftPart = FramePart | EnginePart | PropPart | WingPart | TailPart | GearPart;
+export interface SectionPart extends CatalogueItem {
+  kind: 'part';
+  category: SectionCategory;
+  /** The aircraft this section comes from; its shape and handling share come with it. */
+  source: AirframeId;
+  look: string;
+}
+
+export type AircraftPart = SectionPart | FramePart | EnginePart | PropPart | WingPart | TailPart | GearPart;
 export type ShopItem = Airframe | AircraftPart;
 
 // --- Parts ------------------------------------------------------------------------------
@@ -517,6 +547,41 @@ export const ENGINES: readonly EnginePart[] = [
       lumpDepth: 0.5,
     },
     look: 'Banded cowl and two glowing combustor cans',
+  },
+  {
+    id: 'engine-pod',
+    kind: 'part',
+    category: 'engine',
+    name: 'Thunderpod Twin',
+    tagline: 'Two engines with an aircraft hanging between them.',
+    description:
+      'Oversized racing pods on outriggers, each nearly as long as the cabin. Brutal pull and a terrifying top end. They run hot, they weigh a ton, and they blow up if you lean on them.',
+    role: 'Speed',
+    strength: 'The biggest thrust you can fit',
+    tradeoff: 'Very heavy, runs hot, slow to turn',
+    price: 4600,
+    unlock: { kind: 'wins', count: 2 },
+    visual: { cowl: 'inline', stacks: 4, scoop: true, twin: true, pod: true },
+    mass: 860,
+    thrust: 16500,
+    boostMultiplier: 1.62,
+    dragArea: 0.44,
+    baseLoad: 0.64,
+    boostLoad: 1.22,
+    heatRate: 0.24,
+    coolRate: 0.12,
+    boostCapacity: 4,
+    boostRechargeTime: 15,
+    sound: {
+      base: 38,
+      range: 78,
+      wave: 'sawtooth',
+      ratio: 1.49,
+      wave2: 'square',
+      lumpRate: 6,
+      lumpDepth: 0.32,
+    },
+    look: 'Two huge pods on outriggers with intake scoops',
   },
 ];
 
@@ -964,7 +1029,15 @@ const SINGLE_ENGINES = [
 ] as const;
 const ALL_PROPS = ['prop-three', 'prop-two', 'prop-scimitar', 'prop-four', 'prop-paddle'] as const;
 
-export const AIRFRAMES: readonly Airframe[] = [
+/** An airframe as authored: its sections are generated below. */
+type AirframeSpec = Omit<Airframe, 'accepts' | 'defaults'> & {
+  accepts: Record<ComponentCategory, readonly string[]>;
+  defaults: Record<ComponentCategory, string>;
+};
+
+const TWIN_ENGINES = ['engine-twin', 'engine-pod'] as const;
+
+const STOCK_AIRFRAMES: readonly AirframeSpec[] = [
   {
     id: 'airframe-sport',
     kind: 'airframe',
@@ -991,7 +1064,7 @@ export const AIRFRAMES: readonly Airframe[] = [
     wingScale: 1,
     accepts: {
       frame: ALL_FRAMES,
-      engine: [...SINGLE_ENGINES, 'engine-twin', 'engine-pulse'],
+      engine: [...SINGLE_ENGINES, ...TWIN_ENGINES, 'engine-pulse'],
       prop: ALL_PROPS,
       wings: ['wings-balanced', 'wings-compact', 'wings-elliptic', 'wings-highlift'],
       tail: ['tail-standard', 'tail-big', 'tail-twin', 'tail-vee'],
@@ -1114,7 +1187,7 @@ export const AIRFRAMES: readonly Airframe[] = [
     wingScale: 1.06,
     accepts: {
       frame: ALL_FRAMES,
-      engine: [...SINGLE_ENGINES, 'engine-twin'],
+      engine: [...SINGLE_ENGINES, ...TWIN_ENGINES],
       prop: ['prop-three', 'prop-two', 'prop-four', 'prop-paddle'],
       wings: ['wings-balanced', 'wings-highlift', 'wings-glider'],
       tail: ['tail-standard', 'tail-big', 'tail-twin'],
@@ -1155,7 +1228,7 @@ export const AIRFRAMES: readonly Airframe[] = [
     wingScale: 1.1,
     accepts: {
       frame: ALL_FRAMES,
-      engine: [...SINGLE_ENGINES, 'engine-twin'],
+      engine: [...SINGLE_ENGINES, ...TWIN_ENGINES],
       prop: ['prop-three', 'prop-two', 'prop-four', 'prop-paddle'],
       wings: ['wings-balanced', 'wings-highlift', 'wings-glider'],
       tail: ['tail-standard', 'tail-big', 'tail-twin'],
@@ -1196,7 +1269,7 @@ export const AIRFRAMES: readonly Airframe[] = [
     wingScale: 1.2,
     accepts: {
       frame: ALL_FRAMES,
-      engine: [...SINGLE_ENGINES, 'engine-twin'],
+      engine: [...SINGLE_ENGINES, ...TWIN_ENGINES],
       prop: ['prop-three', 'prop-two', 'prop-four', 'prop-paddle'],
       wings: ['wings-balanced', 'wings-highlift', 'wings-glider', 'wings-elliptic'],
       tail: ['tail-standard', 'tail-big', 'tail-twin'],
@@ -1213,7 +1286,152 @@ export const AIRFRAMES: readonly Airframe[] = [
   },
 ];
 
+// --- Sections ---------------------------------------------------------------------------
+
+const SECTION_LOOKS: Record<SectionCategory, Record<string, string>> = {
+  nose: {
+    sport: 'Rounded firewall for a pointed cowl',
+    scout: 'Short barrel nose for a big radial',
+    racer: 'Long, slim racing nose',
+    bush: 'Square-shouldered utility nose',
+    seaplane: 'Streamlined nose cap; engines ride on a pylon or the wings',
+    cruiser: 'Glazed observation nose',
+  },
+  cabin: {
+    sport: 'Bubble canopy, low wing',
+    scout: 'Bubble canopy, mid wing',
+    racer: 'Set-back cockpit with a belly scoop, low wing',
+    bush: 'Boxy glazed cabin, strutted high wing',
+    seaplane: 'Cockpit under a parasol wing with an engine pylon',
+    cruiser: 'Stepped windscreen and a row of cabin windows',
+  },
+  boom: {
+    sport: 'Medium boom with a gentle upsweep',
+    scout: 'Short, stubby boom',
+    racer: 'Long, low boom',
+    bush: 'Steeply upswept boom',
+    seaplane: 'High boom that clears the spray',
+    cruiser: 'Long, deep boom',
+  },
+};
+
+/** [role, best at, trade-off] for each section. */
+const SECTION_ROLES: Record<SectionCategory, Record<string, [string, string, string]>> = {
+  nose: {
+    sport: ['Baseline', 'Even weight up front', 'No specialism'],
+    scout: ['Agility', 'Quick to point', 'Short and frail'],
+    racer: ['Speed', 'Low drag', 'Fragile'],
+    bush: ['Toughness', 'Shrugs off knocks', 'Blunt and draggy'],
+    seaplane: ['Toughness', 'Clean, tough nose', 'Needs a pylon cabin or wing engines'],
+    cruiser: ['Stability', 'Calm and tough', 'Heavy'],
+  },
+  cabin: {
+    sport: ['Baseline', 'Takes most wings and gear', 'No specialism'],
+    scout: ['Agility', 'Light and lively', 'Small wings only'],
+    racer: ['Speed', 'Slippery cockpit', 'Fragile'],
+    bush: ['Low speed', 'Big high wing and tough gear', 'Draggy'],
+    seaplane: ['Toughness', 'Floats and a pylon engine', 'Draggy'],
+    cruiser: ['Stability', 'Long wings and twin engines', 'Heavy'],
+  },
+  boom: {
+    sport: ['Baseline', 'Even pitch feel', 'No specialism'],
+    scout: ['Agility', 'Sharp pitch', 'Twitchy'],
+    racer: ['Speed', 'Long and slippery', 'Barely self-levels'],
+    bush: ['Stability', 'Big tail authority', 'Draggy'],
+    seaplane: ['Stability', 'Steady and high', 'Slow pitch'],
+    cruiser: ['Stability', 'Very steady', 'Slow to rotate'],
+  },
+};
+
+/** Sections each rival will stake in a challenge race (see progression/rivals.ts). */
+export const RIVAL_PRIZES: Readonly<Record<string, string>> = {
+  'nose-racer': 'ai-aggressive',
+  'boom-cruiser': 'ai-speed',
+  'cabin-bush': 'ai-precision',
+};
+
+const SECTION_NAMES: Record<SectionCategory, string> = { nose: 'Nose', cabin: 'Cabin', boom: 'Tail Boom' };
+
+const sectionsOf = (airframe: AirframeSpec): SectionPart[] =>
+  SECTION_CATEGORIES.map((category) => {
+    const id = `${category}-${airframe.visual}`;
+    const [role, strength, tradeoff] = SECTION_ROLES[category][airframe.visual]!;
+    const rival = RIVAL_PRIZES[id];
+    return {
+      id,
+      kind: 'part',
+      category,
+      source: airframe.id,
+      name: `${airframe.name} ${SECTION_NAMES[category]}`,
+      tagline: `Off the ${airframe.name} ${airframe.designation}.`,
+      description: `The ${SECTION_NAMES[category].toLowerCase()} of the ${airframe.name}. Bolt it onto a Workshop Special to mix it with sections from other aircraft.`,
+      role,
+      strength,
+      tradeoff,
+      price: 0,
+      unlock: rival
+        ? { kind: 'rival', airframe: airframe.id, rival }
+        : { kind: 'airframe', airframe: airframe.id },
+      look: SECTION_LOOKS[category][airframe.visual]!,
+    };
+  });
+
+export const SECTIONS: readonly SectionPart[] = STOCK_AIRFRAMES.flatMap(sectionsOf);
+
+const withSections = (airframe: AirframeSpec): Airframe => ({
+  ...airframe,
+  accepts: {
+    nose: [`nose-${airframe.visual}`],
+    cabin: [`cabin-${airframe.visual}`],
+    boom: [`boom-${airframe.visual}`],
+    ...airframe.accepts,
+  },
+  defaults: {
+    nose: `nose-${airframe.visual}`,
+    cabin: `cabin-${airframe.visual}`,
+    boom: `boom-${airframe.visual}`,
+    ...airframe.defaults,
+  },
+});
+
+/**
+ * The Workshop Special: a jig that takes any sections you own. Its handling, sockets and
+ * which parts fit come from those sections (see `effectiveAirframe` in build.ts); the
+ * numbers here are the Meridian's, its starting sections.
+ */
+const CUSTOM_AIRFRAME: Airframe = {
+  ...withSections(STOCK_AIRFRAMES[0]!),
+  id: 'airframe-custom',
+  kind: 'airframe',
+  archetype: 'Kitbash',
+  designation: 'X-1',
+  name: 'Workshop Special',
+  tagline: 'Whatever you can bolt together.',
+  description:
+    'A bare jig in the corner of the hangar. Bolt on any nose, cabin and tail boom you own, from any aircraft, and it becomes your own machine. Its handling comes from the sections you choose.',
+  role: 'Your own design',
+  strength: 'Mix sections from every aircraft',
+  tradeoff: 'Only as good as what you bolt on',
+  price: 1500,
+  unlock: { kind: 'races', count: 2 },
+  visual: 'custom',
+  accepts: {
+    nose: SECTIONS.filter((section) => section.category === 'nose').map((section) => section.id),
+    cabin: SECTIONS.filter((section) => section.category === 'cabin').map((section) => section.id),
+    boom: SECTIONS.filter((section) => section.category === 'boom').map((section) => section.id),
+    frame: ALL_FRAMES,
+    engine: [...SINGLE_ENGINES, ...TWIN_ENGINES, 'engine-pulse'],
+    prop: ALL_PROPS,
+    wings: ['wings-balanced', 'wings-compact', 'wings-elliptic', 'wings-highlift', 'wings-glider'],
+    tail: ['tail-standard', 'tail-big', 'tail-twin', 'tail-vee'],
+    gear: ['gear-light', 'gear-tundra', 'gear-retract', 'gear-floats'],
+  },
+};
+
+export const AIRFRAMES: readonly Airframe[] = [...STOCK_AIRFRAMES.map(withSections), CUSTOM_AIRFRAME];
+
 export const ALL_PARTS: readonly AircraftPart[] = [
+  ...SECTIONS,
   ...FRAMES,
   ...ENGINES,
   ...PROPS,
@@ -1240,6 +1458,9 @@ export const getPartIn = <C extends PartCategory>(
 };
 
 const CATEGORY_LISTS: Record<PartCategory, readonly AircraftPart[]> = {
+  nose: SECTIONS.filter((section) => section.category === 'nose'),
+  cabin: SECTIONS.filter((section) => section.category === 'cabin'),
+  boom: SECTIONS.filter((section) => section.category === 'boom'),
   frame: FRAMES,
   engine: ENGINES,
   prop: PROPS,
@@ -1251,6 +1472,9 @@ const CATEGORY_LISTS: Record<PartCategory, readonly AircraftPart[]> = {
 export const partsForCategory = (category: PartCategory): readonly AircraftPart[] => CATEGORY_LISTS[category];
 
 export const CATEGORY_LABELS: Record<PartCategory, string> = {
+  nose: 'Nose',
+  cabin: 'Cabin',
+  boom: 'Tail boom',
   frame: 'Frame',
   engine: 'Engine',
   prop: 'Propeller',
@@ -1283,5 +1507,9 @@ export const describeUnlock = (rule: UnlockRule): string => {
       return `Win ${rule.count === 1 ? 'a race' : `${rule.count} races`} to unlock`;
     case 'style':
       return `Score ${rule.score.toLocaleString('en-US')} style points in one race to unlock`;
+    case 'airframe':
+      return `Comes with the ${getAirframe(rule.airframe)?.name ?? 'aircraft'}`;
+    case 'rival':
+      return `Comes with the ${getAirframe(rule.airframe)?.name ?? 'aircraft'}, or win it in a rival challenge`;
   }
 };

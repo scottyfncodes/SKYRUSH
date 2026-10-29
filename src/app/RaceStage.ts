@@ -23,7 +23,7 @@ import type { InputManager } from '../controls/InputManager';
 import type { Hud, HudState } from '../ui/Hud';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { CrashBurst } from '../render/Effects';
-import { Contrails, SpeedLines } from '../render/FlightEffects';
+import { Contrails, EngineSmoke, SpeedLines } from '../render/FlightEffects';
 import { pulse, prefersReducedMotion } from '../ui/haptics';
 import type { StyleAward } from '../style/StyleTracker';
 import { formatCredits } from '../core/format';
@@ -39,6 +39,10 @@ export interface RaceStageOptions {
   setup: AircraftSetup;
   settings: PlayerSettings;
   aiSkill: number;
+  /** Rival id for a one-on-one challenge race; otherwise the full field races. */
+  challenge?: string;
+  /** A rival's line shown over the countdown. */
+  gridLine?: { callsign: string; text: string };
   onPlayerFinished: (standings: Standing[]) => void;
 }
 
@@ -59,6 +63,7 @@ export class RaceStage {
   private readonly burst: CrashBurst;
   private readonly speedLines: SpeedLines | null;
   private readonly contrails: Contrails;
+  private readonly smoke: EngineSmoke;
   private readonly reducedMotion: boolean;
   private readonly configs: RacerConfig[];
   private readonly missedGates = new Set<number>();
@@ -86,6 +91,7 @@ export class RaceStage {
     this.camera.motionScale = this.reducedMotion ? 0 : 1;
     this.speedLines = this.reducedMotion ? null : new SpeedLines(this.world.scene);
     this.contrails = new Contrails(this.world.scene, trailColor(setup.paint));
+    this.smoke = new EngineSmoke(this.world.scene);
     options.audio.setEngineSound(resolveBuild(build).engine.sound);
     const { theme } = circuit;
     this.environment = createEnvironmentMap(renderer.gl, {
@@ -97,7 +103,7 @@ export class RaceStage {
     });
     this.configs = [
       { id: 'player', name: 'You', callsign: 'YOU', isPlayer: true, build },
-      ...AI_PERSONALITIES.map((ai) => ({
+      ...AI_PERSONALITIES.filter((ai) => !options.challenge || ai.id === options.challenge).map((ai) => ({
         id: ai.id,
         name: ai.name,
         callsign: ai.callsign,
@@ -164,10 +170,13 @@ export class RaceStage {
     this.world.setGateStates(0, this.missedGates);
     this.world.resetRings();
     this.contrails.reset();
+    this.smoke.reset();
     this.options.hud.resetStyle();
     const next = this.options.circuit.gates[0]!.position;
     this.camera.snap(this.sim.player.flight, next);
     this.options.hud.clearMessage();
+    const line = this.options.gridLine;
+    if (line) this.options.hud.showMessage(`${line.callsign}: “${line.text}”`, 'neutral', 3.4);
     this.options.hud.setCountdown('3');
     this.options.input.reset();
   }
@@ -349,12 +358,19 @@ export class RaceStage {
       case 'out-of-bounds':
         if (event.isPlayer) hud.showMessage('OUT OF BOUNDS: returning to course', 'bad', 2.5);
         break;
-      case 'overheat':
+      case 'overheat': {
+        // A blowout: smoke for everyone to see, and a limp home for whoever pushed too hard.
+        const racer = this.sim.racers.find((r) => r.config.id === event.racerId);
+        if (racer) this.smoke.burst(racer.flight.position, racer.flight.orientation, racer.flight.velocity);
         if (event.isPlayer) {
           audio.overheat();
-          hud.showMessage('OVERHEATED: boost disabled', 'bad', 2.5);
+          audio.blowout();
+          this.camera.impulse(0.45);
+          pulse(this.options.settings.haptics, [30, 40, 30]);
+          hud.showMessage('ENGINE BLOWN: limp on until it cools', 'bad', 2.8);
         }
         break;
+      }
       case 'scrape':
         if (event.isPlayer) {
           this.camera.impulse(0.35);
@@ -417,6 +433,14 @@ export class RaceStage {
       }
     }
     this.burst.update(frameDt);
+    if (frameDt > 0) {
+      for (const racer of this.sim.racers) {
+        if (racer.respawnTimer > 0) continue;
+        const flight = racer.flight;
+        this.smoke.trail(flight.position, flight.orientation, flight.velocity, flight.heat, frameDt);
+      }
+      this.smoke.update(frameDt);
+    }
 
     const nextIndex = Math.min(player.nextGate, circuit.gates.length - 1);
     const nextGate = circuit.gates[nextIndex]!;
@@ -524,6 +548,7 @@ export class RaceStage {
     this.burst.dispose();
     this.speedLines?.dispose();
     this.contrails.dispose();
+    this.smoke.dispose();
     this.world.dispose();
     this.environment.dispose();
     this.options.renderer.gl.toneMappingExposure = DEFAULT_EXPOSURE;

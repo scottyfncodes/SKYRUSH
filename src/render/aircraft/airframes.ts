@@ -1,5 +1,5 @@
-import type { Airframe } from '../../aircraft/parts';
-import type { BodyStation } from './geometry';
+import { getAirframe, getPartIn, type Airframe } from '../../aircraft/parts';
+import { sampleBody, type BodyStation, type BodySample } from './geometry';
 
 /**
  * Shapes and attachment sockets for each airframe. Fuselages start at the
@@ -9,6 +9,8 @@ import type { BodyStation } from './geometry';
 export interface AirframeShape {
   /** Fuselage stations from the firewall back to the tail (nose → tail). */
   stations: BodyStation[];
+  /** Where the nose meets the cabin and the cabin meets the tail boom (z). */
+  split: [number, number];
   /** Nose cap length when no engine is in the nose. */
   noseCap: number;
   /** Glazed nose cap (cruiser) instead of a painted one. */
@@ -59,8 +61,11 @@ export interface AirframeShape {
   mast?: { z: number };
 }
 
-const SHAPES: Record<Airframe['visual'], AirframeShape> = {
+type StockVisual = Exclude<Airframe['visual'], 'custom'>;
+
+const SHAPES: Record<StockVisual, AirframeShape> = {
   sport: {
+    split: [1.6, -1.6],
     stations: [
       { z: 2.55, w: 0.6, top: 0.6, bottom: 0.62 },
       { z: 1.6, w: 0.66, top: 0.66, bottom: 0.7 },
@@ -81,6 +86,7 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
     mast: { z: -1.15 },
   },
   scout: {
+    split: [1.1, -1.3],
     stations: [
       { z: 1.75, w: 0.64, top: 0.64, bottom: 0.64 },
       { z: 0.9, w: 0.66, top: 0.68, bottom: 0.66 },
@@ -99,6 +105,7 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
     nacelle: 0.36,
   },
   racer: {
+    split: [2.2, -2.4],
     stations: [
       { z: 3.5, w: 0.5, top: 0.5, bottom: 0.52 },
       { z: 2.2, w: 0.55, top: 0.55, bottom: 0.6 },
@@ -119,6 +126,7 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
     scoop: { z: -0.2, length: 2.0 },
   },
   bush: {
+    split: [1.9, -1.2],
     stations: [
       { z: 2.35, w: 0.56, top: 0.6, bottom: 0.62, square: 2.4 },
       { z: 1.6, w: 0.64, top: 0.84, bottom: 0.68, square: 3 },
@@ -139,6 +147,7 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
     mast: { z: -0.6 },
   },
   seaplane: {
+    split: [1.9, -1.0],
     stations: [
       { z: 2.75, w: 0.46, top: 0.48, bottom: 0.52 },
       { z: 1.3, w: 0.56, top: 0.6, bottom: 0.64 },
@@ -158,6 +167,7 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
     nacelle: 0.36,
   },
   cruiser: {
+    split: [3.6, -2.0],
     stations: [
       { z: 4.4, w: 0.78, top: 0.78, bottom: 0.8 },
       { z: 3.1, w: 0.92, top: 0.96, bottom: 0.92 },
@@ -180,4 +190,100 @@ const SHAPES: Record<Airframe['visual'], AirframeShape> = {
   },
 };
 
-export const shapeFor = (airframe: Airframe): AirframeShape => SHAPES[airframe.visual];
+const size = (sample: BodySample): number => (sample.w + (sample.top + sample.bottom) / 2) / 2;
+
+const visualOf = (category: 'nose' | 'cabin' | 'boom', id: string): StockVisual | undefined => {
+  const section = getPartIn(category, id);
+  const source = section ? getAirframe(section.source) : undefined;
+  return source && source.visual !== 'custom' ? source.visual : undefined;
+};
+
+/**
+ * A fuselage composed from three aircraft's sections. The cabin keeps its own frame
+ * (canopy, wing, gear and engine pylon sockets); the nose and tail boom are moved to
+ * meet it and scaled so each joint matches the cabin's section, then the body is
+ * swept through all three so the joins flow instead of stepping.
+ */
+export const composeShape = (
+  noseVisual: StockVisual,
+  cabinVisual: StockVisual,
+  boomVisual: StockVisual,
+): AirframeShape => {
+  const N = SHAPES[noseVisual];
+  const C = SHAPES[cabinVisual];
+  const B = SHAPES[boomVisual];
+  if (noseVisual === cabinVisual && cabinVisual === boomVisual) return C;
+  const [cFront, cBack] = C.split;
+  const front = sampleBody(C.stations, cFront);
+  const back = sampleBody(C.stations, cBack);
+  const noseJoint = sampleBody(N.stations, N.split[0]);
+  const boomJoint = sampleBody(B.stations, B.split[1]);
+  const clampScale = (k: number) => Math.min(1.45, Math.max(0.7, k));
+  const kn = clampScale(size(front) / size(noseJoint));
+  const kb = clampScale(size(back) / size(boomJoint));
+
+  const nose: BodyStation[] = N.stations
+    .filter((station) => station.z > N.split[0] + 0.05)
+    .map((station) => ({
+      ...station,
+      z: cFront + (station.z - N.split[0]) * (0.5 + 0.5 * kn),
+      w: station.w * kn,
+      top: station.top * kn,
+      bottom: station.bottom * kn,
+      y: front.y + ((station.y ?? 0) - noseJoint.y) * kn,
+    }));
+  const cabin: BodyStation[] = [
+    front,
+    ...C.stations.filter((station) => station.z < cFront - 0.05 && station.z > cBack + 0.05),
+    back,
+  ];
+  const boom: BodyStation[] = B.stations
+    .filter((station) => station.z < B.split[1] - 0.05)
+    .map((station) => ({
+      ...station,
+      z: cBack + (station.z - B.split[1]),
+      w: station.w * kb,
+      top: station.top * kb,
+      bottom: station.bottom * kb,
+      y: back.y + ((station.y ?? 0) - boomJoint.y) * kb,
+    }));
+  const boomZ = (z: number) => cBack + (z - B.split[1]);
+  const boomY = (y: number) => back.y + (y - boomJoint.y) * kb;
+  return {
+    ...C,
+    stations: [...nose, ...cabin, ...boom],
+    split: [cFront, cBack],
+    noseCap: N.noseCap * (0.5 + 0.5 * kn),
+    glazedNose: N.glazedNose,
+    cowl: N.cowl,
+    prop: N.prop,
+    tail: {
+      le: boomZ(B.tail.le),
+      y: boomY(B.tail.y),
+      finY: boomY(B.tail.finY),
+      scale: B.tail.scale * Math.sqrt(kb),
+    },
+    gear: { ...C.gear, tailZ: boomZ(B.gear.tailZ), tailY: boomY(B.gear.tailY) },
+    mast: C.mast ? { z: Math.max(C.mast.z, cBack + 0.3) } : undefined,
+  };
+};
+
+/** The shape a build is drawn with: stock aircraft use their own; a Workshop Special composes one. */
+export const shapeForBuild = (build: {
+  airframe: string;
+  nose: string;
+  cabin: string;
+  boom: string;
+}): AirframeShape => {
+  const airframe = getAirframe(build.airframe);
+  if (airframe && airframe.visual !== 'custom') return SHAPES[airframe.visual];
+  return composeShape(
+    visualOf('nose', build.nose) ?? 'sport',
+    visualOf('cabin', build.cabin) ?? 'sport',
+    visualOf('boom', build.boom) ?? 'sport',
+  );
+};
+
+/** The shape of a stock airframe (a Workshop Special shows its starting Meridian sections). */
+export const shapeFor = (airframe: Airframe): AirframeShape =>
+  airframe.visual === 'custom' ? SHAPES.sport : SHAPES[airframe.visual];

@@ -66,6 +66,32 @@ export class ResultsScreen extends Screen {
         h('td', { text: s.penaltySeconds > 0 ? `+${s.penaltySeconds}s` : '–' }),
       ),
     );
+    const duel = applied.challenge;
+    const challenge = duel
+      ? h(
+          'div',
+          {
+            className: `results__challenge${duel.won ? ' is-won' : ''}`,
+            dataset: { testid: 'results-challenge' },
+          },
+          h('span', {
+            className: 'eyebrow',
+            text: `Challenge · ${duel.rival.callsign} · You ${duel.record.wins}–${duel.record.losses}`,
+          }),
+          h('strong', {
+            className: 'results__challenge-outcome',
+            text: duel.won ? `You beat ${duel.rival.name}` : `${duel.rival.name} took it`,
+          }),
+          h('q', { className: 'results__challenge-quote', text: duel.line }),
+          duel.prize
+            ? h('span', {
+                className: 'chip chip--aircraft',
+                text: `${duel.prize.name} is yours: bolt it onto a Workshop Special`,
+                dataset: { testid: 'results-prize' },
+              })
+            : null,
+        )
+      : null;
     const unlocks =
       applied.unlocked.length > 0
         ? h(
@@ -192,6 +218,7 @@ export class ResultsScreen extends Screen {
         ),
       ),
       highlights,
+      ...(challenge ? [challenge] : []),
       ...(badges ? [badges] : []),
       ...(goal ? [goal] : []),
       h(

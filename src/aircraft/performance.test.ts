@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BUILD, defaultBuildFor, withPart, type AircraftBuild } from './build';
-import { AIRFRAMES, PART_CATEGORIES, getAirframe } from './parts';
+import {
+  CUSTOM_AIRFRAME_ID,
+  DEFAULT_BUILD,
+  buildName,
+  defaultBuildFor,
+  effectiveAirframe,
+  isValidBuild,
+  withPart,
+  withSection,
+  type AircraftBuild,
+} from './build';
+import { AIRFRAMES, COMPONENT_CATEGORIES, SECTIONS, getAirframe } from './parts';
 import {
   ABSOLUTE_MAX_SPEED,
   AIR_DENSITY,
@@ -21,9 +31,9 @@ import {
 /** Every compatible build: airframes × every part each slot accepts. */
 const allBuilds = (): AircraftBuild[] => {
   const builds: AircraftBuild[] = [];
-  for (const airframe of AIRFRAMES) {
+  for (const airframe of AIRFRAMES.filter((a) => a.id !== CUSTOM_AIRFRAME_ID)) {
     let partial: AircraftBuild[] = [defaultBuildFor(airframe)];
-    for (const category of PART_CATEGORIES) {
+    for (const category of COMPONENT_CATEGORIES) {
       partial = partial.flatMap((build) =>
         airframe.accepts[category].map((id) => withPart(build, category, id)),
       );
@@ -264,9 +274,9 @@ describe('summarisePerformance', () => {
   });
 
   it('every slot swap that is allowed changes the numbers', () => {
-    for (const airframe of AIRFRAMES) {
+    for (const airframe of AIRFRAMES.filter((a) => a.id !== CUSTOM_AIRFRAME_ID)) {
       const base = performanceForBuild(defaultBuildFor(airframe));
-      for (const category of PART_CATEGORIES) {
+      for (const category of COMPONENT_CATEGORIES) {
         for (const id of airframe.accepts[category]) {
           if (id === airframe.defaults[category]) continue;
           expect(
@@ -276,5 +286,70 @@ describe('summarisePerformance', () => {
         }
       }
     }
+  });
+});
+
+describe('Workshop Special (kitbashed sections)', () => {
+  const special = defaultBuildFor(getAirframe(CUSTOM_AIRFRAME_ID)!);
+  const ids = (category: string) => SECTIONS.filter((s) => s.category === category).map((s) => s.id);
+
+  it('with Meridian sections it flies exactly like a Meridian', () => {
+    const meridian = flightParametersForBuild(DEFAULT_BUILD);
+    const kit = flightParametersForBuild(special);
+    for (const key of Object.keys(meridian) as (keyof typeof meridian)[]) {
+      expect(kit[key], key).toBeCloseTo(meridian[key], 9);
+    }
+    expect(buildName(special)).toBe('Meridian Special');
+  });
+
+  it('every combination of sections becomes a valid aircraft with sane numbers', () => {
+    let count = 0;
+    for (const nose of ids('nose'))
+      for (const cabin of ids('cabin'))
+        for (const boom of ids('boom')) {
+          let build = withSection(special, 'nose', nose);
+          build = withSection(build, 'cabin', cabin);
+          build = withSection(build, 'boom', boom);
+          expect(isValidBuild(build), `${nose} ${cabin} ${boom}`).toBe(true);
+          const params = flightParametersForBuild(build);
+          for (const [key, value] of Object.entries(params)) expect(Number.isFinite(value), key).toBe(true);
+          expect(params.stallSpeed).toBeLessThan(params.maxSpeed * 0.5);
+          count += 1;
+        }
+    expect(count).toBe(216);
+  });
+
+  it('sections carry their handling: a racer nose and boom are slipperier, a bush cabin tougher', () => {
+    const base = flightParametersForBuild(special);
+    const slick = flightParametersForBuild(
+      withSection(withSection(special, 'nose', 'nose-racer'), 'boom', 'boom-racer'),
+    );
+    expect(slick.dragArea).toBeLessThan(base.dragArea);
+    const tough = flightParametersForBuild(withSection(special, 'cabin', 'cabin-bush'));
+    expect(tough.durability).toBeGreaterThan(base.durability);
+    expect(tough.stallSpeed).toBeLessThan(base.stallSpeed);
+  });
+
+  it('fit rules follow the sections', () => {
+    // A Petrel nose has no engine bay: single engines need the Petrel's pylon cabin.
+    const capped = effectiveAirframe(withSection(special, 'nose', 'nose-seaplane'))!;
+    expect(capped.accepts.engine).not.toContain('engine-efficient');
+    expect(capped.accepts.engine).toContain('engine-twin');
+    // Wings and gear follow the cabin; tails follow the boom.
+    const floaty = effectiveAirframe(withSection(special, 'cabin', 'cabin-seaplane'))!;
+    expect(floaty.accepts.gear).toEqual(['gear-floats']);
+    const racerBoom = effectiveAirframe(withSection(special, 'boom', 'boom-racer'))!;
+    expect(racerBoom.accepts.tail).not.toContain('tail-twin');
+    // Swapping repairs parts that no longer fit.
+    const swapped = withSection(special, 'cabin', 'cabin-seaplane');
+    expect(swapped.gear).toBe('gear-floats');
+  });
+
+  it('a Thunderpod build is the fastest straight-line machine and pays for it', () => {
+    const pods = flightParametersForBuild({ ...DEFAULT_BUILD, engine: 'engine-pod' });
+    const twin = flightParametersForBuild({ ...DEFAULT_BUILD, engine: 'engine-twin' });
+    expect(pods.maxSpeed).toBeGreaterThan(twin.maxSpeed);
+    expect(pods.mass).toBeGreaterThan(twin.mass);
+    expect(pods.boostCapacity).toBeLessThan(twin.boostCapacity);
   });
 });

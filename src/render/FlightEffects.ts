@@ -5,12 +5,15 @@ import {
   Color,
   DoubleSide,
   Group,
+  IcosahedronGeometry,
+  InstancedMesh,
   LineBasicMaterial,
+  Matrix4,
+  Quaternion,
   LineSegments,
   Mesh,
   MeshBasicMaterial,
   type Camera,
-  type Quaternion,
   type Scene,
   Vector3,
 } from 'three';
@@ -244,5 +247,115 @@ export class Contrails {
     this.mesh.geometry.dispose();
     this.material.dispose();
     this.mesh.removeFromParent();
+  }
+}
+
+const PUFFS = 90;
+const _offset = new Vector3();
+
+/**
+ * Engine strain: grey smoke trails engines running hot, and a blowout throws out a
+ * burst of black smoke. One pooled instanced mesh for every racer; nothing is
+ * allocated per frame.
+ */
+export class EngineSmoke {
+  private readonly mesh: InstancedMesh;
+  private readonly material: MeshBasicMaterial;
+  private readonly positions: Vector3[] = [];
+  private readonly velocities: Vector3[] = [];
+  private readonly ages = new Float32Array(PUFFS);
+  private readonly lives = new Float32Array(PUFFS);
+  private readonly sizes = new Float32Array(PUFFS);
+  private readonly matrix = new Matrix4();
+  private readonly quaternion = new Quaternion();
+  private readonly scale = new Vector3();
+  private next = 0;
+  private readonly rng = createRng(4242);
+
+  constructor(scene: Scene) {
+    this.material = new MeshBasicMaterial({
+      color: 0x3b3936,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+    });
+    this.mesh = new InstancedMesh(new IcosahedronGeometry(1, 1), this.material, PUFFS);
+    this.mesh.frustumCulled = false;
+    for (let i = 0; i < PUFFS; i += 1) {
+      this.positions.push(new Vector3());
+      this.velocities.push(new Vector3());
+      this.lives[i] = 0;
+      this.ages[i] = 1;
+      this.matrix.makeScale(0, 0, 0);
+      this.mesh.setMatrixAt(i, this.matrix);
+    }
+    scene.add(this.mesh);
+  }
+
+  private emit(origin: Vector3, velocity: Vector3, size: number, life: number): void {
+    const i = this.next;
+    this.next = (this.next + 1) % PUFFS;
+    this.positions[i]!.copy(origin);
+    this.velocities[i]!.copy(velocity).multiplyScalar(0.25);
+    this.velocities[i]!.y += 1.5 + this.rng() * 2;
+    this.ages[i] = 0;
+    this.lives[i] = life;
+    this.sizes[i] = size;
+  }
+
+  /** Trails smoke from an engine running hot: more and darker toward overheat. */
+  trail(position: Vector3, orientation: Quaternion, velocity: Vector3, heat: number, dt: number): void {
+    const strain = smoothstep(0.78, 1, heat);
+    if (strain <= 0 || this.rng() > strain * dt * 22) return;
+    _offset
+      .set((this.rng() - 0.5) * 0.6, 0.1, -2.2)
+      .applyQuaternion(orientation)
+      .add(position);
+    this.emit(_offset, velocity, 0.5 + strain * 0.6, 1.2 + strain);
+  }
+
+  /** A blowout: a dense burst of black smoke around the engine. */
+  burst(position: Vector3, orientation: Quaternion, velocity: Vector3): void {
+    for (let k = 0; k < 18; k += 1) {
+      _offset
+        .set((this.rng() - 0.5) * 2.4, (this.rng() - 0.3) * 1.6, 1 - this.rng() * 4)
+        .applyQuaternion(orientation)
+        .add(position);
+      this.emit(_offset, velocity, 0.9 + this.rng() * 0.9, 1.8 + this.rng());
+    }
+  }
+
+  update(dt: number): void {
+    for (let i = 0; i < PUFFS; i += 1) {
+      const life = this.lives[i]!;
+      if (life <= 0) continue;
+      const age = (this.ages[i] = this.ages[i]! + dt / life);
+      if (age >= 1) {
+        this.lives[i] = 0;
+        this.matrix.makeScale(0, 0, 0);
+        this.mesh.setMatrixAt(i, this.matrix);
+        continue;
+      }
+      const position = this.positions[i]!.addScaledVector(this.velocities[i]!, dt);
+      this.velocities[i]!.multiplyScalar(1 - Math.min(1, dt * 1.5));
+      // Puffs swell, then shrink away as they thin out.
+      const s = this.sizes[i]! * (0.6 + age * 2.4) * (age > 0.7 ? (1 - age) / 0.3 : 1);
+      this.matrix.compose(position, this.quaternion, this.scale.set(s, s, s));
+      this.mesh.setMatrixAt(i, this.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  reset(): void {
+    this.lives.fill(0);
+    this.matrix.makeScale(0, 0, 0);
+    for (let i = 0; i < PUFFS; i += 1) this.mesh.setMatrixAt(i, this.matrix);
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.mesh.geometry.dispose();
+    this.material.dispose();
   }
 }
