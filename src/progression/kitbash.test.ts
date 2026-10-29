@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BUILD, defaultBuildFor } from '../aircraft/build';
+import { AI_PERSONALITIES } from '../ai/AiPilot';
+import { DEFAULT_BUILD, buildName, defaultBuildFor, isValidBuild } from '../aircraft/build';
+import { PATTERNS, factoryPaint, isValidPaint } from '../aircraft/paint';
 import { getAirframe, getItem } from '../aircraft/parts';
 import {
   activeBuild,
@@ -13,6 +15,8 @@ import {
 } from './profile';
 import { applyRaceOutcome, type RaceOutcome } from './rewards';
 import { RIVALS, getRival } from './rivals';
+import { shapeForBuild } from '../render/aircraft/airframes';
+import { sampleBody } from '../render/aircraft/geometry';
 
 const expectOk = <T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> => {
   expect(result.ok).toBe(true);
@@ -129,5 +133,53 @@ describe('rival challenges', () => {
       rivals: { 'ai-precision': { wins: 2.7, losses: -3 }, nobody: { wins: 9 } },
     });
     expect(profile.rivals).toEqual({ 'ai-precision': { wins: 2, losses: 0 } });
+  });
+});
+
+describe('salvaged look', () => {
+  const special = (nose: string, cabin: string, boom: string) => ({
+    airframe: 'airframe-custom',
+    nose,
+    cabin,
+    boom,
+  });
+
+  it('puts a collar on every splice between different aircraft, and none on a stock fuselage', () => {
+    expect(shapeForBuild(DEFAULT_BUILD).joints ?? []).toEqual([]);
+    expect(shapeForBuild(special('nose-sport', 'cabin-sport', 'boom-sport')).joints ?? []).toEqual([]);
+    const one = shapeForBuild(special('nose-racer', 'cabin-sport', 'boom-sport'));
+    expect(one.joints).toEqual([one.split[0]]);
+    const both = shapeForBuild(special('nose-racer', 'cabin-bush', 'boom-cruiser'));
+    expect(both.joints).toEqual(both.split);
+  });
+
+  it('leaves a step at the splice instead of blending the sections into one skin', () => {
+    const shape = shapeForBuild(special('nose-racer', 'cabin-bush', 'boom-sport'));
+    const [front] = shape.split;
+    const size = (z: number) => {
+      const s = sampleBody(shape.stations, z);
+      return s.w + (s.top + s.bottom) / 2;
+    };
+    expect(Math.abs(size(front) - size(front + 0.06))).toBeGreaterThan(0.04);
+  });
+
+  it('rolls the Workshop Special out as salvaged, a paint the shop accepts', () => {
+    const paint = factoryPaint('airframe-custom');
+    expect(paint.pattern).toBe('salvage');
+    expect(isValidPaint(paint)).toBe(true);
+    expect(PATTERNS.some((pattern) => pattern.id === 'salvage')).toBe(true);
+  });
+
+  it('has every rival flying a Workshop Special that carries the section they stake', () => {
+    for (const rival of RIVALS) {
+      const pilot = AI_PERSONALITIES.find((ai) => ai.id === rival.id)!;
+      expect(pilot.build.airframe).toBe('airframe-custom');
+      expect(isValidBuild(pilot.build)).toBe(true);
+      const prize = getItem(rival.prize);
+      expect(prize?.kind === 'part' && pilot.build[prize.category as 'nose' | 'cabin' | 'boom']).toBe(
+        rival.prize,
+      );
+      expect(buildName(pilot.build)).toMatch(/Special$/);
+    }
   });
 });

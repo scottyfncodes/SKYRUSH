@@ -12,8 +12,9 @@ export interface AiPersonality {
   name: string;
   callsign: string;
   style: AiStyle;
+  /** Each rival flies a Workshop Special carrying the section they stake. */
   build: AircraftBuild;
-  /** Livery theme id (cosmetic). */
+  /** Livery theme id (cosmetic); their spliced-on sections keep their old paint. */
   livery: string;
   /** How early the pilot slows for corners (1 = textbook, <1 = late braking). */
   cornerCaution: number;
@@ -38,9 +39,9 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'ORBIT',
     style: 'precision',
     build: {
-      airframe: 'airframe-sport',
+      airframe: 'airframe-custom',
       nose: 'nose-sport',
-      cabin: 'cabin-sport',
+      cabin: 'cabin-bush',
       boom: 'boom-sport',
       frame: 'frame-standard',
       engine: 'engine-efficient',
@@ -65,13 +66,13 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'VANDAL',
     style: 'aggressive',
     build: {
-      airframe: 'airframe-scout',
-      nose: 'nose-scout',
+      airframe: 'airframe-custom',
+      nose: 'nose-racer',
       cabin: 'cabin-scout',
-      boom: 'boom-scout',
+      boom: 'boom-sport',
       frame: 'frame-standard',
       engine: 'engine-tuned',
-      prop: 'prop-three',
+      prop: 'prop-two',
       wings: 'wings-elliptic',
       tail: 'tail-standard',
       gear: 'gear-light',
@@ -92,8 +93,8 @@ export const AI_PERSONALITIES: readonly AiPersonality[] = [
     callsign: 'LONGSHOT',
     style: 'speed',
     build: {
-      airframe: 'airframe-cruiser',
-      nose: 'nose-cruiser',
+      airframe: 'airframe-custom',
+      nose: 'nose-sport',
       cabin: 'cabin-cruiser',
       boom: 'boom-cruiser',
       frame: 'frame-standard',

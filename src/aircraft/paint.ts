@@ -40,7 +40,7 @@ export const SWATCHES: readonly Swatch[] = [
   { id: 'neon', name: 'Neon Rose', color: 0xff3f8e, badge: 'combo-king', trail: 0xff9ac4 },
 ];
 
-export type PatternId = 'plain' | 'split' | 'cheatline' | 'checker' | 'bands' | 'scallop';
+export type PatternId = 'plain' | 'split' | 'cheatline' | 'checker' | 'bands' | 'scallop' | 'salvage';
 export type InsigniaId = 'none' | 'roundel' | 'chevron' | 'bolt' | 'swallow';
 
 export const PATTERNS: readonly { id: PatternId; name: string; hint: string }[] = [
@@ -50,6 +50,11 @@ export const PATTERNS: readonly { id: PatternId; name: string; hint: string }[] 
   { id: 'checker', name: 'Checker Nose', hint: 'A chequered band behind the cowl' },
   { id: 'bands', name: 'Rescue Bands', hint: 'Broad accent bands round the fuselage' },
   { id: 'scallop', name: 'Scallops', hint: 'Racing scallops sweeping back from the nose' },
+  {
+    id: 'salvage',
+    name: 'As Salvaged',
+    hint: 'Your colours on the cabin. Other sections keep the paint they came with',
+  },
 ];
 
 export const INSIGNIA: readonly { id: InsigniaId; name: string }[] = [
@@ -249,6 +254,21 @@ export const THEMES: readonly PaintTheme[] = [
       number: 5,
     },
   },
+  {
+    id: 'livery-salvage',
+    name: 'Scrapyard',
+    note: 'Primer patches and the donors’ old paint',
+    paint: {
+      primary: 'bone',
+      secondary: 'olive',
+      accent: 'vermilion',
+      tips: 'sunfade',
+      nose: 'graphite',
+      pattern: 'salvage',
+      insignia: 'none',
+      number: 13,
+    },
+  },
   // Earned themes: each uses a badge swatch (see progression/badges.ts).
   {
     id: 'livery-aurora',
@@ -326,6 +346,21 @@ export const getTheme = (id: string): PaintTheme | undefined => themeIndex.get(i
 
 export const DEFAULT_THEME_ID = 'livery-racer';
 export const DEFAULT_PAINT: Readonly<Paint> = Object.freeze({ ...getTheme(DEFAULT_THEME_ID)!.paint });
+
+/** Paint each aircraft rolls out of the factory in. */
+export const FACTORY_THEMES: Record<string, string> = {
+  'airframe-sport': 'livery-racer',
+  'airframe-scout': 'livery-survey',
+  'airframe-racer': 'livery-midnight',
+  'airframe-bush': 'livery-courier',
+  'airframe-seaplane': 'livery-rescue',
+  'airframe-cruiser': 'livery-glacier',
+  'airframe-custom': 'livery-salvage',
+};
+
+export const factoryPaint = (airframeId: string): Paint => ({
+  ...(getTheme(FACTORY_THEMES[airframeId] ?? '')?.paint ?? DEFAULT_PAINT),
+});
 
 /** Colour of a swatch id; unknown ids fall back to ivory. */
 export const swatchColor = (id: string): number => swatchIndex.get(id)?.color ?? 0xf1e8d4;

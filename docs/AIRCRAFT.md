@@ -68,19 +68,30 @@ pitch and stability. Which wings, tails, gear and engines fit also comes from th
 racer boom will not take a twin fin. Swapping a section that rules out a fitted part swaps that part
 for one you own that fits, and the hangar lists those knock-on swaps before you commit.
 
+A Special looks bolted together, not built in one piece. Each section keeps most of its own size,
+so the skin steps where two aircraft meet, and a bare-metal collar with a rivet row along each edge
+covers every splice. It rolls out in the Scrapyard livery, whose **As Salvaged** pattern paints only
+the cabin in your colours: a nose or boom from another aircraft keeps that aircraft's factory paint
+(its pattern, its cowl colour, its tail surfaces), with the old registration showing faintly through
+the overpaint. Primer-green patches and a bare aluminium repair panel complete the look, and a
+stamped builder's plate by the cabin door lists the donors, as does the line under the hangar
+nameplate (`NOSE NEEDLE R-7 · CABIN MULE B-4 · BOOM BASTION C-9`). Any other pattern paints the
+whole aircraft in your colours; the collars stay.
+
 Three sections are not in any showroom. Each rival stakes one in a challenge race (see below).
 
 ## Rivals
 
 The Rivals screen lists three named pilots, each with a temperament, a record against you and a
-section at stake. A challenge is one on one on your selected course against a slightly sharper
+section at stake. Every rival flies a Workshop Special as salvaged, with the section they stake
+bolted on, so you can see the prize before you race for it. A challenge is one on one on your selected course against a slightly sharper
 version of that pilot, who has a line for the grid and another for the finish.
 
-| Rival          | Callsign | Flies    | Stakes            |
-| -------------- | -------- | -------- | ----------------- |
-| Mira Castellan | ORBIT    | Meridian | Mule Cabin        |
-| Dax Reyes      | VANDAL   | Wren     | Needle Nose       |
-| Jun Okafor     | LONGSHOT | Bastion  | Bastion Tail Boom |
+| Rival          | Callsign | Flies                                  | Stakes            |
+| -------------- | -------- | -------------------------------------- | ----------------- |
+| Mira Castellan | ORBIT    | Meridian nose and boom, Mule cabin     | Mule Cabin        |
+| Dax Reyes      | VANDAL   | Needle nose, Wren cabin, Meridian boom | Needle Nose       |
+| Jun Okafor     | LONGSHOT | Meridian nose, Bastion cabin and boom  | Bastion Tail Boom |
 
 Beat them once to win the section; the record keeps counting after that.
 

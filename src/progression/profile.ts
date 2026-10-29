@@ -25,7 +25,8 @@ import {
   type ShopItem,
 } from '../aircraft/parts';
 import {
-  DEFAULT_PAINT,
+  FACTORY_THEMES,
+  factoryPaint,
   getTheme,
   isPaintUnlocked,
   isThemeUnlocked,
@@ -128,19 +129,7 @@ export const DEFAULT_SETTINGS: PlayerSettings = {
   haptics: true,
 };
 
-/** Paint each aircraft rolls out of the factory in. */
-export const FACTORY_THEMES: Record<string, string> = {
-  'airframe-sport': 'livery-racer',
-  'airframe-scout': 'livery-survey',
-  'airframe-racer': 'livery-midnight',
-  'airframe-bush': 'livery-courier',
-  'airframe-seaplane': 'livery-rescue',
-  'airframe-cruiser': 'livery-glacier',
-};
-
-export const factoryPaint = (airframeId: string): Paint => ({
-  ...(getTheme(FACTORY_THEMES[airframeId] ?? '')?.paint ?? DEFAULT_PAINT),
-});
+export { FACTORY_THEMES, factoryPaint };
 
 const factoryEntry = (airframe: Airframe): HangarEntry => ({
   build: defaultBuildFor(airframe),

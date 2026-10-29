@@ -2,6 +2,7 @@ import { Screen, button, clear, h } from './dom';
 import { RIVALS, rivalLine } from '../progression/rivals';
 import type { PlayerProfile } from '../progression/profile';
 import { AI_PERSONALITIES } from '../ai/AiPilot';
+import { buildName } from '../aircraft/build';
 import { getAirframe, getItem } from '../aircraft/parts';
 import { getCourseSpec } from '../course/courses';
 import { airframeSilhouette } from './silhouette';
@@ -52,7 +53,7 @@ export class RivalsScreen extends Screen {
                 { className: 'rival-card__art' },
                 airframeSilhouette(pilot.build.airframe, pilot.build),
               ),
-              h('span', { text: airframe ? `Flies the ${airframe.name}` : '' }),
+              h('span', { text: airframe ? `Flies the ${buildName(pilot.build)}` : '' }),
             )
           : null,
         h('p', { className: 'rival-card__bio', text: rival.bio }),

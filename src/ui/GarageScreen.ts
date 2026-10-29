@@ -866,6 +866,22 @@ export class GarageScreen extends Screen {
         course ? h('span', { className: 'nameplate__suits', text: ` · suits ${course}` }) : null,
       ),
     );
+    if (airframe.id === CUSTOM_AIRFRAME_ID) this.nameplate.append(this.donorLine(preview.build));
+  }
+
+  /** Where a Workshop Special's sections came from, as stamped on its builder's plate. */
+  private donorLine(build: AircraftBuild): HTMLElement {
+    const donor = (category: 'nose' | 'cabin' | 'boom') => {
+      const source = getAirframe(getPartIn(category, build[category])?.source ?? '');
+      return source ? `${source.name} ${source.designation}` : '';
+    };
+    return h(
+      'span',
+      { className: 'nameplate__donors', dataset: { testid: 'nameplate-donors' } },
+      h('span', { text: `Nose ${donor('nose')}` }),
+      h('span', { text: `Cabin ${donor('cabin')}` }),
+      h('span', { text: `Boom ${donor('boom')}` }),
+    );
   }
 
   private revertButton(): HTMLButtonElement | null {
