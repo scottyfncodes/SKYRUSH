@@ -5,6 +5,7 @@ import { buildCharacter, performanceForBuild } from '../aircraft/performance';
 import { formatCredits, formatRaceTime } from '../core/format';
 import { getCourseSpec } from '../course/courses';
 import { createCourseSelector } from './CoursePicker';
+import { licenceStatus } from '../progression/activities';
 
 export interface MainMenuCallbacks {
   onRace: () => void;
@@ -12,6 +13,7 @@ export interface MainMenuCallbacks {
   onGarage: () => void;
   onControls: () => void;
   onRivals: () => void;
+  onBoard: () => void;
 }
 
 export class MainMenuScreen extends Screen {
@@ -32,11 +34,11 @@ export class MainMenuScreen extends Screen {
       h(
         'div',
         { className: 'brand' },
-        h('span', { className: 'brand__eyebrow', text: 'Coast · Canyon · Alpine Air Races' }),
+        h('span', { className: 'brand__eyebrow', text: 'Coast · Canyon · Alpine · Mesa' }),
         h('h1', { className: 'brand__title', text: 'SKYRUSH' }),
         h('p', {
           className: 'brand__tagline',
-          text: 'Collect the aircraft, tune every part, then fly it flat out.',
+          text: 'Build the aircraft, then race it, fly the shows, run the mail and find what the valleys hide.',
         }),
       ),
       this.aircraft,
@@ -45,6 +47,11 @@ export class MainMenuScreen extends Screen {
         'div',
         { className: 'menu-actions' },
         button('Race', callbacks.onRace, { variant: 'primary', testId: 'menu-race' }),
+        button('Flight board', callbacks.onBoard, {
+          variant: 'primary',
+          testId: 'menu-board',
+          className: 'btn--board',
+        }),
         button('Hangar', callbacks.onGarage, { testId: 'menu-garage' }),
         button('Rivals', callbacks.onRivals, { testId: 'menu-rivals' }),
         button('Controls & Settings', callbacks.onControls, { variant: 'ghost', testId: 'menu-controls' }),
@@ -101,6 +108,7 @@ export class MainMenuScreen extends Screen {
       stat('Best style', profile.bestStyle > 0 ? formatCredits(profile.bestStyle) : '–', 'menu-style'),
       stat('Races', String(profile.racesCompleted), 'menu-races'),
       stat('Wins', String(profile.wins), 'menu-wins'),
+      stat('Licence', `${licenceStatus(profile).stars}/${licenceStatus(profile).total}`, 'menu-licence'),
     );
   }
 }

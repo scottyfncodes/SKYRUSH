@@ -66,6 +66,16 @@ export const airframeSilhouette = (airframeId: string, build?: AircraftBuild): S
   const chord = 1.9 * airframe.wingScale;
   const wing = `M${-shape.wing.le},${wingY - 0.08} L${-(shape.wing.le - chord)},${wingY - 0.02} L${-(shape.wing.le - chord)},${wingY + 0.05} L${-shape.wing.le},${wingY + 0.08} Z`;
   const parts = [fuselage, fin, wing];
+  const upper = shape.wing.upper;
+  if (upper) {
+    // Biplane: the upper wing, staggered forward, and an interplane strut between the two.
+    const uy = -upper.y;
+    const ule = shape.wing.le + upper.stagger;
+    parts.push(
+      `M${-ule},${uy - 0.08} L${-(ule - chord)},${uy - 0.02} L${-(ule - chord)},${uy + 0.05} L${-ule},${uy + 0.08} Z`,
+      `M${-(ule - chord * 0.3)},${uy} L${-(ule - chord * 0.3) + 0.08},${uy} L${-(shape.wing.le - chord * 0.3) + 0.08},${wingY} L${-(shape.wing.le - chord * 0.3)},${wingY} Z`,
+    );
+  }
   // Gear or floats.
   const g = shape.gear;
   if (fitted.gear === 'gear-floats') {

@@ -1,5 +1,5 @@
 import type { Texture, Vector3 } from 'three';
-import { Color, Group, MathUtils } from 'three';
+import { Color, Group, MathUtils, Mesh, type Material } from 'three';
 import type { AircraftSetup } from '../aircraft/build';
 import type { FlightInput, FlightState } from '../flight/FlightModel';
 import { buildAircraftModel, type AircraftModelHandles } from './aircraftModel';
@@ -113,6 +113,20 @@ export class AircraftView {
       heatMaterial.emissiveIntensity = this.heatGlow * 1.6 + boost * 0.5;
       heatMaterial.emissive.copy(OVERHEAT_COLOR);
     }
+  }
+
+  /** Turns the model into a see-through ghost (time trials). The model's materials are its own. */
+  makeGhost(opacity = 0.38): void {
+    this.model.root.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      object.castShadow = false;
+      const materials = (Array.isArray(object.material) ? object.material : [object.material]) as Material[];
+      for (const material of materials) {
+        material.transparent = true;
+        material.opacity = Math.min(material.opacity, 1) * opacity;
+        material.depthWrite = false;
+      }
+    });
   }
 
   worldPosition(target: Vector3): Vector3 {

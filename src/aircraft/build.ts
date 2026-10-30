@@ -126,6 +126,7 @@ export const effectiveAirframe = (build: SectionIds): Airframe | undefined => {
     durability: blend('durability'),
     coolingBonus: blend('coolingBonus'),
     wingScale: cabin.wingScale,
+    wingSets: cabin.wingSets,
     accepts: {
       ...base.accepts,
       engine: engines.length ? engines : nose.accepts.engine,

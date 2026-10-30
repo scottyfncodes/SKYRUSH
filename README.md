@@ -1,6 +1,6 @@
 # SKYRUSH
 
-**Collect the aircraft. Tune every part. Fly it flat out.**
+**Collect the aircraft. Tune every part. Then race it, fly the shows, run the mail and explore.**
 
 SKYRUSH is a browser game about building up a hangar of distinctive propeller aircraft (a nimble
 scout, a sport two-seater, a long-nosed racer, a strutted bush plane, a floatplane and a twin-engined
@@ -92,9 +92,41 @@ Returning players go straight from **Race** on the menu to the grid (the briefin
 first race and is always reachable from the garage). **Race again** sits at the top of the results;
 `Enter` also replays.
 
+### Flight board and activities
+
+**Flight board** on the main menu lists everything there is to fly in the selected region, set like a
+departures board. Each region holds five activities:
+
+| Activity    | What you do                                                                                                           | Medals on                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Grand Prix  | The original four-aircraft race.                                                                                      | (credits, badges)        |
+| Time trial  | The course alone against a ghost: the club pace until you set a time, then your own best lap.                         | Lap time                 |
+| Precision   | 10–12 narrow, low gates (under the Caldera and Ember arches, through the pines in fog). A miss or crash ends the run. | Average accuracy         |
+| Air show    | 90 s of loops, rolls, inverted passes and knife edges inside a pylon box, on aerobatic controls.                      | Display score            |
+| Delivery    | Mail-hook pickups and drops: pass the hook slow and low, then carry fragile or heavy cargo to the next stop.          | Time and cargo condition |
+| Free flight | No clock. Five hidden discoveries per region (wrecks, summit cairns, huts, a ring line along a ridge).                | Discoveries              |
+
+Caldera Ridge and Coral Coast have air shows; Frostline Pass, Coral Coast and Ember Mesa have
+deliveries; Caldera, Frostline and Ember have precision runs. Conditions are part of each activity:
+Summit Relay flies at dawn in a gusty crosswind, Island Mail in rain, Whiteout Slalom in fog, the
+Lighthouse Show at dusk. Wind and gusts push the aircraft (the HUD shows wind relative to your view),
+fog pulls the haze in, rain streaks past the camera.
+
+The board says how well the aircraft you are flying suits each activity, from its real numbers: a
+Mule stalls far below the hook speed and makes deliveries easy, a Needle can barely slow down enough,
+the Starling rolls at 320°/s for air shows. Float gear makes water a runway: a Petrel can touch down
+on the sea (Island Mail's buoy pickup) where a landplane would scrape.
+
+**Medals and the pilot licence.** Bronze, silver and gold each pay once (400 / 600 / 900 credits),
+every completed run pays 150, a new personal best 100, each discovery 300. Every medal tier and
+discovery is a licence star (56 in all); stars rank the licence from Student pilot to Ace (1,000
+credits per rank) and 8 stars unlock the **Starling A-3** aerobatic biplane. Gold in a show, a
+delivery or a precision run, and ten discoveries, earn badges with their own liveries (Display Team,
+Air Mail, Needle Point, Expedition). Every flight goes in the aircraft's logbook in the hangar.
+
 ### Hangar, aircraft and progression
 
-Six aircraft, each with its own silhouette, handling and factory parts, and six part slots (frame,
+Seven aircraft, each with its own silhouette, handling and factory parts, and six part slots (frame,
 engine, propeller, wings, tail, gear) whose parts change both the model and the flight parameters.
 Not every part fits every aircraft; the hangar says which aircraft take a part when it will not fit.
 Every aircraft also breaks down into a nose, cabin and tail boom: the Workshop Special takes any
@@ -148,8 +180,9 @@ src/
   render/        renderer wrapper, world (terrain, sky, water, props, gates, landmarks), effects
   render/aircraft/  procedural aircraft: sculpted bodies, lofted surfaces, livery textures
   audio/         procedural WebAudio engine, boost, gate and UI sounds
-  ui/            DOM screens: menu, hangar, briefing, HUD, pause, results, overlays
-  app/           App state machine, GarageStage, RaceStage
+  activities/    activity catalogue, conditions and wind, tricks, free-flight simulation, ghosts, medals, fit
+  ui/            DOM screens: menu, hangar, flight board, briefing, HUD, pause, results, overlays
+  app/           App state machine, GarageStage, RaceStage, FreeFlightStage
 ```
 
 Gameplay systems are deterministic and framework-free so they are tested directly with Vitest.

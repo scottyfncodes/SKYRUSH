@@ -694,6 +694,61 @@ const assemble = (
     }
   }
 
+  // Biplane: the upper wing, staggered forward on cabane struts, braced by N-struts and flying wires.
+  const upper = shape.wing.upper;
+  if (upper) {
+    const upperPlan = wingPlanform(
+      wings.visual,
+      airframe.wingScale * 1.05,
+      shape.wing.le + upper.stagger,
+      upper.y,
+    );
+    const us = upperPlan.stations;
+    const upperSpan = upperPlan.span;
+    const tipStart = upperSpan * 0.9;
+    addStatic(loftSurface(stationsBetween(us, 0, tipStart), 0, 1), primary, true);
+    addStatic(loftSurface(stationsBetween(us, tipStart, upperSpan), 0, 1), tips, true);
+    // Cabane struts from the fuselage top to the centre section.
+    const centre = stationAt(us, 0.45);
+    for (const k of [0.15, 0.75]) {
+      const z = centre.le - centre.chord * k - upper.stagger * 0.5;
+      rod(
+        new Vector3(bodyAt(z).w * 0.5, topAt(z) - 0.04, z),
+        new Vector3(0.45, centre.y - 0.03, centre.le - centre.chord * k),
+        0.035,
+        darkMetal,
+        true,
+      );
+    }
+    // Interplane N-struts.
+    const top = stationAt(us, upperSpan * upper.struts);
+    const bottom = stationAt(ws, Math.min(span * 0.95, upperSpan * upper.struts));
+    const topFront = new Vector3(top.x, top.y - 0.03, top.le - top.chord * 0.18);
+    const topBack = new Vector3(top.x, top.y - 0.03, top.le - top.chord * 0.78);
+    const bottomFront = new Vector3(bottom.x, upperSurfaceY(bottom, 0.18), bottom.le - bottom.chord * 0.18);
+    const bottomBack = new Vector3(bottom.x, upperSurfaceY(bottom, 0.78), bottom.le - bottom.chord * 0.78);
+    rod(bottomFront, topFront, 0.04, secondary, true);
+    rod(bottomBack, topBack, 0.04, secondary, true);
+    rod(bottomBack, topFront, 0.03, secondary, true);
+    // Flying and landing wires: thin diagonals from the struts to the fuselage.
+    const rootLow = stationAt(ws, 0.5);
+    const rootHigh = stationAt(us, 0.5);
+    rod(
+      new Vector3(rootLow.x, rootLow.y, rootLow.le - rootLow.chord * 0.4),
+      topFront,
+      0.008,
+      darkMetal,
+      true,
+    );
+    rod(
+      new Vector3(rootHigh.x, rootHigh.y, rootHigh.le - rootHigh.chord * 0.4),
+      bottomBack,
+      0.008,
+      darkMetal,
+      true,
+    );
+  }
+
   // Insignia decals on the wings.
   const insignia = createInsigniaTexture(paint);
   if (insignia) {

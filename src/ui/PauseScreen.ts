@@ -23,7 +23,8 @@ export class PauseScreen extends Screen {
     this.element.append(this.body);
   }
 
-  update(settings: PlayerSettings): void {
+  /** `labels` renames Restart and Quit for activities (for example "End flight" in free flight). */
+  update(settings: PlayerSettings, labels: { restart?: string; quit?: string } = {}): void {
     clear(this.body);
     const actions =
       this.mode === 'pause'
@@ -31,8 +32,11 @@ export class PauseScreen extends Screen {
             'div',
             { className: 'dialog__actions' },
             button('Resume', this.callbacks.onResume, { variant: 'primary', testId: 'pause-resume' }),
-            button('Restart race', this.callbacks.onRestart, { testId: 'pause-restart' }),
-            button('Quit to hangar', this.callbacks.onQuit, { variant: 'ghost', testId: 'pause-quit' }),
+            button(labels.restart ?? 'Restart race', this.callbacks.onRestart, { testId: 'pause-restart' }),
+            button(labels.quit ?? 'Quit to hangar', this.callbacks.onQuit, {
+              variant: 'ghost',
+              testId: 'pause-quit',
+            }),
           )
         : h(
             'div',

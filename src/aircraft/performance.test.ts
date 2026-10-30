@@ -64,6 +64,7 @@ describe('computeFlightParameters', () => {
     for (const build of BUILDS) {
       const params = flightParametersForBuild(build);
       for (const [key, value] of Object.entries(params)) {
+        if (typeof value === 'boolean') continue;
         expect(Number.isFinite(value), key).toBe(true);
         if (key !== 'propBias') expect(value, key).toBeGreaterThan(0);
       }
@@ -297,7 +298,7 @@ describe('Workshop Special (kitbashed sections)', () => {
     const meridian = flightParametersForBuild(DEFAULT_BUILD);
     const kit = flightParametersForBuild(special);
     for (const key of Object.keys(meridian) as (keyof typeof meridian)[]) {
-      expect(kit[key], key).toBeCloseTo(meridian[key], 9);
+      expect(Number(kit[key]), key).toBeCloseTo(Number(meridian[key]), 9);
     }
     expect(buildName(special)).toBe('Meridian Special');
   });
@@ -312,11 +313,12 @@ describe('Workshop Special (kitbashed sections)', () => {
           build = withSection(build, 'boom', boom);
           expect(isValidBuild(build), `${nose} ${cabin} ${boom}`).toBe(true);
           const params = flightParametersForBuild(build);
-          for (const [key, value] of Object.entries(params)) expect(Number.isFinite(value), key).toBe(true);
+          for (const [key, value] of Object.entries(params))
+            if (typeof value !== 'boolean') expect(Number.isFinite(value), key).toBe(true);
           expect(params.stallSpeed).toBeLessThan(params.maxSpeed * 0.5);
           count += 1;
         }
-    expect(count).toBe(216);
+    expect(count).toBe(343);
   });
 
   it('sections carry their handling: a racer nose and boom are slipperier, a bush cabin tougher', () => {

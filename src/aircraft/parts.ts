@@ -38,7 +38,9 @@ export type UnlockRule =
   /** Comes with an aircraft (sections): not sold on its own. */
   | { kind: 'airframe'; airframe: string }
   /** Comes with an aircraft, or can be won from a rival in a challenge race. */
-  | { kind: 'rival'; airframe: string; rival: string };
+  | { kind: 'rival'; airframe: string; rival: string }
+  /** Licence stars from activity medals and discoveries (see progression/activities.ts). */
+  | { kind: 'stars'; count: number };
 
 /** Fields shared by everything the hangar sells. */
 interface CatalogueItem {
@@ -66,9 +68,18 @@ export type AirframeId =
   | 'airframe-bush'
   | 'airframe-seaplane'
   | 'airframe-cruiser'
+  | 'airframe-stunt'
   | 'airframe-custom';
 
-export type Archetype = 'Scout' | 'Sport' | 'Racer' | 'Bush plane' | 'Seaplane' | 'Heavy cruiser' | 'Kitbash';
+export type Archetype =
+  | 'Scout'
+  | 'Sport'
+  | 'Racer'
+  | 'Bush plane'
+  | 'Seaplane'
+  | 'Heavy cruiser'
+  | 'Aerobatic'
+  | 'Kitbash';
 
 export interface Airframe extends CatalogueItem {
   id: AirframeId;
@@ -76,7 +87,7 @@ export interface Airframe extends CatalogueItem {
   archetype: Archetype;
   /** Registration-style designation painted on the tail. */
   designation: string;
-  visual: 'scout' | 'sport' | 'racer' | 'bush' | 'seaplane' | 'cruiser' | 'custom';
+  visual: 'scout' | 'sport' | 'racer' | 'bush' | 'seaplane' | 'cruiser' | 'stunt' | 'custom';
   /** Empty structure mass before parts (kg). */
   mass: number;
   dragArea: number;
@@ -88,6 +99,8 @@ export interface Airframe extends CatalogueItem {
   durability: number; // 1 = baseline scrape tolerance
   /** Linear wing scale: span and chord. Area, mass and drag of wings scale with its square. */
   wingScale: number;
+  /** Stacked wings (2 for a biplane): each set adds its area, mass and drag. Default 1. */
+  wingSets?: number;
   /** Parts each slot accepts. Anything else is explicitly incompatible. */
   accepts: Record<PartCategory, readonly string[]>;
   /** Factory parts, granted with the aircraft. */
@@ -1284,6 +1297,48 @@ const STOCK_AIRFRAMES: readonly AirframeSpec[] = [
       gear: 'gear-retract',
     },
   },
+  {
+    id: 'airframe-stunt',
+    kind: 'airframe',
+    archetype: 'Aerobatic',
+    designation: 'A-3',
+    name: 'Starling',
+    tagline: 'Two wings, no patience for straight lines.',
+    description:
+      'A short-coupled display biplane with N-struts, flying wires and an open cockpit. It rolls faster than anything in the hangar and loops on a whim, and it is in no hurry on the straights.',
+    role: 'Aerobatics',
+    strength: 'Fastest roll, tightest loop',
+    tradeoff: 'Draggy, slowest on a straight',
+    price: 3600,
+    unlock: { kind: 'stars', count: 8 },
+    visual: 'stunt',
+    wingSets: 2,
+    mass: 470,
+    dragArea: 0.5,
+    pitchRate: 1.78,
+    responsiveness: 9,
+    stability: 0.72,
+    rollFactor: 1.5,
+    coolingBonus: 0.03,
+    durability: 0.85,
+    wingScale: 0.74,
+    accepts: {
+      frame: ALL_FRAMES,
+      engine: SINGLE_ENGINES,
+      prop: ['prop-three', 'prop-two', 'prop-four'],
+      wings: ['wings-balanced', 'wings-compact', 'wings-elliptic'],
+      tail: ['tail-standard', 'tail-big'],
+      gear: ['gear-light', 'gear-tundra'],
+    },
+    defaults: {
+      frame: 'frame-light',
+      engine: 'engine-wasp',
+      prop: 'prop-four',
+      wings: 'wings-compact',
+      tail: 'tail-standard',
+      gear: 'gear-light',
+    },
+  },
 ];
 
 // --- Sections ---------------------------------------------------------------------------
@@ -1296,6 +1351,7 @@ const SECTION_LOOKS: Record<SectionCategory, Record<string, string>> = {
     bush: 'Square-shouldered utility nose',
     seaplane: 'Streamlined nose cap; engines ride on a pylon or the wings',
     cruiser: 'Glazed observation nose',
+    stunt: 'Stubby nose for a radial behind a short cowl',
   },
   cabin: {
     sport: 'Bubble canopy, low wing',
@@ -1304,6 +1360,7 @@ const SECTION_LOOKS: Record<SectionCategory, Record<string, string>> = {
     bush: 'Boxy glazed cabin, strutted high wing',
     seaplane: 'Cockpit under a parasol wing with an engine pylon',
     cruiser: 'Stepped windscreen and a row of cabin windows',
+    stunt: 'Open cockpit between two wings on N-struts',
   },
   boom: {
     sport: 'Medium boom with a gentle upsweep',
@@ -1312,6 +1369,7 @@ const SECTION_LOOKS: Record<SectionCategory, Record<string, string>> = {
     bush: 'Steeply upswept boom',
     seaplane: 'High boom that clears the spray',
     cruiser: 'Long, deep boom',
+    stunt: 'Short, tapered boom',
   },
 };
 
@@ -1324,6 +1382,7 @@ const SECTION_ROLES: Record<SectionCategory, Record<string, [string, string, str
     bush: ['Toughness', 'Shrugs off knocks', 'Blunt and draggy'],
     seaplane: ['Toughness', 'Clean, tough nose', 'Needs a pylon cabin or wing engines'],
     cruiser: ['Stability', 'Calm and tough', 'Heavy'],
+    stunt: ['Agility', 'Light and quick', 'Short of cooling'],
   },
   cabin: {
     sport: ['Baseline', 'Takes most wings and gear', 'No specialism'],
@@ -1332,6 +1391,7 @@ const SECTION_ROLES: Record<SectionCategory, Record<string, [string, string, str
     bush: ['Low speed', 'Big high wing and tough gear', 'Draggy'],
     seaplane: ['Toughness', 'Floats and a pylon engine', 'Draggy'],
     cruiser: ['Stability', 'Long wings and twin engines', 'Heavy'],
+    stunt: ['Agility', 'Fast roll, two wings', 'Draggy'],
   },
   boom: {
     sport: ['Baseline', 'Even pitch feel', 'No specialism'],
@@ -1340,6 +1400,7 @@ const SECTION_ROLES: Record<SectionCategory, Record<string, [string, string, str
     bush: ['Stability', 'Big tail authority', 'Draggy'],
     seaplane: ['Stability', 'Steady and high', 'Slow pitch'],
     cruiser: ['Stability', 'Very steady', 'Slow to rotate'],
+    stunt: ['Agility', 'Sharp pitch', 'Barely self-levels'],
   },
 };
 
@@ -1511,5 +1572,7 @@ export const describeUnlock = (rule: UnlockRule): string => {
       return `Comes with the ${getAirframe(rule.airframe)?.name ?? 'aircraft'}`;
     case 'rival':
       return `Comes with the ${getAirframe(rule.airframe)?.name ?? 'aircraft'}, or win it in a rival challenge`;
+    case 'stars':
+      return `Earn ${rule.count} licence stars (activity medals and discoveries) to unlock`;
   }
 };

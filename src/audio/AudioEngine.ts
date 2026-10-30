@@ -32,6 +32,9 @@ export class AudioEngine {
   private enabled = true;
   private engineRunning = false;
   private noise: AudioBuffer | null = null;
+  private rainGain: GainNode | null = null;
+  private rainSource: AudioBufferSourceNode | null = null;
+  private rainLevel = 0;
 
   get available(): boolean {
     return this.context !== null;
@@ -144,6 +147,18 @@ export class AudioEngine {
       this.boostGain.gain.value = 0;
       boostSource.connect(boostFilter).connect(this.boostGain).connect(this.master);
       boostSource.start();
+
+      // Rain on the canopy: soft, slightly bright noise, silent unless the weather calls for it.
+      this.rainSource = ctx.createBufferSource();
+      this.rainSource.buffer = buffer;
+      this.rainSource.loop = true;
+      const rainFilter = ctx.createBiquadFilter();
+      rainFilter.type = 'highpass';
+      rainFilter.frequency.value = 2600;
+      this.rainGain = ctx.createGain();
+      this.rainGain.gain.value = this.rainLevel * 0.16;
+      this.rainSource.connect(rainFilter).connect(this.rainGain).connect(this.master);
+      this.rainSource.start(0, 0.7);
     }
     this.engineRunning = true;
   }
@@ -155,6 +170,7 @@ export class AudioEngine {
       this.engineOsc2?.stop();
       this.lumpOsc?.stop();
       this.windNoise?.stop();
+      this.rainSource?.stop();
     } catch {
       // already stopped
     }
@@ -167,6 +183,9 @@ export class AudioEngine {
     this.engineGain?.disconnect();
     this.windGain?.disconnect();
     this.boostGain?.disconnect();
+    this.rainGain?.disconnect();
+    this.rainGain = null;
+    this.rainSource = null;
     this.engineOsc = null;
     this.engineOsc2 = null;
     this.engineGain = null;
@@ -190,6 +209,13 @@ export class AudioEngine {
     this.windGain?.gain.setTargetAtTime(clamp01(speed) * 0.35, t, 0.15);
     this.windFilter?.frequency.setTargetAtTime(600 + speed * 1800, t, 0.15);
     this.boostGain?.gain.setTargetAtTime(boosting ? 0.3 : 0, t, 0.08);
+  }
+
+  /** Weather ambience, 0..1 of rain. Takes effect now if the engine runs, otherwise on the next start. */
+  setRain(level: number): void {
+    this.rainLevel = clamp01(level);
+    if (this.context && this.rainGain)
+      this.rainGain.gain.setTargetAtTime(this.rainLevel * 0.16, this.context.currentTime, 0.4);
   }
 
   private tone(frequency: number, duration: number, type: OscillatorType, volume: number, when = 0): void {
@@ -347,6 +373,32 @@ export class AudioEngine {
   personalBest(): void {
     [659, 784, 988, 1319].forEach((note, index) => this.tone(note, 0.3, 'triangle', 0.22, index * 0.09));
     this.tone(1976, 0.5, 'sine', 0.1, 0.36);
+  }
+
+  /** An aerobatic figure: a rising run whose top note climbs with the chain. */
+  trick(multiplier: number, low: boolean): void {
+    const p = AudioEngine.tierPitch(multiplier);
+    [523, 659, 784].forEach((note, index) => this.tone(note * p, 0.14, 'triangle', 0.2, index * 0.06));
+    if (low) this.whoosh(2000, 600, 0.4, 0.22, 0.05);
+  }
+
+  /** The mail hook catching: a dull thunk, then a bright confirmation. */
+  hook(): void {
+    this.tone(110, 0.18, 'square', 0.22);
+    this.whoosh(900, 300, 0.25, 0.25);
+    this.tone(988, 0.2, 'triangle', 0.22, 0.14);
+    this.tone(1318, 0.3, 'triangle', 0.18, 0.22);
+  }
+
+  /** A refused hook pass: two low notes. */
+  hookMiss(): void {
+    this.tone(330, 0.14, 'square', 0.12);
+    this.tone(247, 0.22, 'square', 0.12, 0.12);
+  }
+
+  /** Found something: a slow, open chord. */
+  discovery(): void {
+    [392, 587, 784, 1175].forEach((note, index) => this.tone(note, 0.9, 'sine', 0.16, index * 0.14));
   }
 
   uiClick(): void {

@@ -250,6 +250,11 @@ export class StyleTracker {
     return this.award('near-miss', nearMissBase(this.skimMin, this.skimTime));
   }
 
+  /** A safe touchdown (floats on water): the current skim no longer counts as a near miss. */
+  touchedGround(): void {
+    this.skimFailed = true;
+  }
+
   /** Called after a respawn: an interrupted skim never pays out and the band must re-arm. */
   resetProximity(): void {
     this.inSkim = false;
@@ -286,3 +291,10 @@ export const terrainClearance = (
   }
   return clearance;
 };
+
+/**
+ * Terrain warning: true when the aircraft is low and descending fast enough to
+ * reach the ground within `seconds`. Drives the HUD's PULL UP line.
+ */
+export const terrainWarning = (altitude: number, verticalSpeed: number, seconds = 2.2): boolean =>
+  altitude < 140 && verticalSpeed < -6 && altitude / -verticalSpeed < seconds;

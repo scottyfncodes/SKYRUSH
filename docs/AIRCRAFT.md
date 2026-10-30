@@ -50,9 +50,15 @@ improvements.
 | Mule B-4     | Bush plane    | 2,200   | Finish 1 race to unlock             | Factory Frame, Kestrel Inline, Four-Blade Climber, Condor High-Lift, Steady Stabiliser, Tundra Tyres     | Stability · Endurance | 333 km/h  | 109 km/h |
 | Petrel P-3   | Seaplane      | 2,800   | Finish 3 races to unlock            | Factory Frame, Kestrel Inline, Standard Three-Blade, Condor High-Lift, Conventional Tail, Twin Floats    | Stability · Endurance | 333 km/h  | 104 km/h |
 | Bastion C-9  | Heavy cruiser | 4,200   | Finish 2 races to unlock            | Factory Frame, Tandem Twin, Standard Three-Blade, Crescent Tapered, Twin Fin, Retractable Gear           | Stability · Speed     | 397 km/h  | 128 km/h |
+| Starling A-3 | Aerobatic     | 3,600   | Earn 8 licence stars                | Fabric Lightweight, Wasp Radial, Four-Blade Climber, Razor Clipped, Conventional Tail, Spatted Wheels    | Agility · Climb       | 364 km/h  | 121 km/h |
 
 Each aircraft keeps its own parts and paint. Buying an aircraft delivers its factory parts; parts
 are owned once and can be fitted to any aircraft that accepts them.
+
+The Starling is a biplane (`wingSets: 2`): both wings add their area, mass and drag, so it has a low
+stall speed and lots of drag, and its short span and high roll factor give it the fastest roll in the
+hangar (320°/s). The model draws the upper wing staggered forward on cabane struts, with N-struts and
+flying wires. See [ACTIVITIES.md](ACTIVITIES.md) for licence stars.
 
 ## Workshop Special and sections
 

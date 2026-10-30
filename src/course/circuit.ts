@@ -29,6 +29,8 @@ export interface Circuit {
   center: { x: number; z: number };
   character: string;
   theme: CourseTheme;
+  /** Seed for the scattered props, kept by variants of the course so its trees stay put. */
+  propSeed: number;
 }
 
 const GATE_WIDTH = 46;
@@ -118,6 +120,7 @@ const buildCircuit = (course: CourseSpec): Circuit => {
     description: course.description,
     character: course.character,
     theme: course.theme,
+    propSeed: gates.length * 101 + Math.round((minX + maxX) / 2),
     seaLevel: course.seaLevel ?? null,
     center: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 },
     gates,

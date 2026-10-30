@@ -16,10 +16,10 @@ import {
 } from './parts';
 
 describe('aircraft catalogue', () => {
-  it('has six stock airframes, one per archetype, plus the Workshop Special', () => {
-    expect(AIRFRAMES).toHaveLength(7);
-    expect(new Set(AIRFRAMES.map((a) => a.archetype)).size).toBe(7);
-    expect(new Set(AIRFRAMES.map((a) => a.visual)).size).toBe(7);
+  it('has seven stock airframes, one per archetype, plus the Workshop Special', () => {
+    expect(AIRFRAMES).toHaveLength(8);
+    expect(new Set(AIRFRAMES.map((a) => a.archetype)).size).toBe(8);
+    expect(new Set(AIRFRAMES.map((a) => a.visual)).size).toBe(8);
   });
 
   it('every stock airframe brings a nose, cabin and tail boom section', () => {

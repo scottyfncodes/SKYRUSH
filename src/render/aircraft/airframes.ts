@@ -26,6 +26,8 @@ export interface AirframeShape {
     le: number;
     /** Lift struts from the fuselage to the wing (span fraction where they meet it). */
     struts?: number;
+    /** Biplane: a second wing above, staggered forward, on cabane and interplane struts. */
+    upper?: { y: number; stagger: number; struts: number };
   };
   tail: {
     /** Tailplane leading edge z and height. */
@@ -166,6 +168,25 @@ const SHAPES: Record<StockVisual, AirframeShape> = {
     cowl: 0.92,
     prop: 1,
     pylon: { y: 2.05, z: 1.95 },
+    nacelle: 0.36,
+  },
+  stunt: {
+    split: [1.0, -1.1],
+    stations: [
+      { z: 1.7, w: 0.62, top: 0.62, bottom: 0.62 },
+      { z: 0.9, w: 0.64, top: 0.66, bottom: 0.64 },
+      { z: -0.3, w: 0.52, top: 0.56, bottom: 0.5, y: 0.04 },
+      { z: -1.7, w: 0.32, top: 0.38, bottom: 0.28, y: 0.14 },
+      { z: -2.9, w: 0.12, top: 0.16, bottom: 0.1, y: 0.24 },
+      { z: -3.35, w: 0.04, top: 0.06, bottom: 0.04, y: 0.28 },
+    ],
+    noseCap: 1,
+    canopy: { kind: 'bubble', z: -0.45, y: 0.5, length: 0.95, width: 0.58, height: 0.3, pilot: true },
+    wing: { mount: 'low', y: -0.36, le: 1.0, upper: { y: 1.32, stagger: 0.42, struts: 0.66 } },
+    tail: { le: -2.8, y: 0.24, finY: 0.34, scale: 0.86 },
+    gear: { z: 0.95, track: 1.2, ground: -1.5, attachY: -0.45, tailZ: -3.1, tailY: 0.16 },
+    cowl: 1.06,
+    prop: 0.9,
     nacelle: 0.36,
   },
   cruiser: {
