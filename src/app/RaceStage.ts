@@ -25,7 +25,7 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { CrashBurst } from '../render/Effects';
 import { Contrails, EngineSmoke, SpeedLines } from '../render/FlightEffects';
 import { pulse, prefersReducedMotion } from '../ui/haptics';
-import type { StyleAward } from '../style/StyleTracker';
+import { terrainWarning, type StyleAward } from '../style/StyleTracker';
 import { formatCredits } from '../core/format';
 import type { PlayerSettings } from '../progression/profile';
 import { clamp, clamp01, smoothstep } from '../core/math';
@@ -614,6 +614,10 @@ export class RaceStage {
     state.gateDistance = _toGate.length();
     state.marker = player.finished ? null : this.projectMarker(nextGate.position);
     state.wind = this.sim.conditions ? windReadout(this.sim.windVector, this.camera.camera) : null;
+    state.note =
+      this.sim.phase === 'racing' && !player.finished && terrainWarning(flight.altitude, flight.velocity.y)
+        ? 'PULL UP'
+        : null;
     if (this.mode === 'trial') {
       const delta = this.ghostDelta;
       state.lead = this.options.ghost
@@ -635,7 +639,8 @@ export class RaceStage {
         detail: `Accuracy · gate ${Math.min(player.nextGate + 1, state.gateCount)}/${state.gateCount}`,
         tone: null,
       };
-      state.note = this.sim.phase === 'racing' && left < 15 && left > 0 ? `${Math.ceil(left)} s LEFT` : null;
+      if (!state.note && this.sim.phase === 'racing' && left < 15 && left > 0)
+        state.note = `${Math.ceil(left)} s LEFT`;
     }
     hud.update(state);
 

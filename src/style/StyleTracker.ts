@@ -291,3 +291,10 @@ export const terrainClearance = (
   }
   return clearance;
 };
+
+/**
+ * Terrain warning: true when the aircraft is low and descending fast enough to
+ * reach the ground within `seconds`. Drives the HUD's PULL UP line.
+ */
+export const terrainWarning = (altitude: number, verticalSpeed: number, seconds = 2.2): boolean =>
+  altitude < 140 && verticalSpeed < -6 && altitude / -verticalSpeed < seconds;

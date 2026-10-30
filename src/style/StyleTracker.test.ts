@@ -15,6 +15,7 @@ import {
   nearMissBase,
   styleCredits,
   terrainClearance,
+  terrainWarning,
 } from './StyleTracker';
 
 const DT = 1 / 120;
@@ -237,5 +238,14 @@ describe('terrainClearance', () => {
 
   it('handles a degenerate right vector', () => {
     expect(terrainClearance(0, 30, 0, 0, 0, flat)).toBe(20);
+  });
+});
+
+describe('terrainWarning', () => {
+  it('warns only when low and closing on the ground fast', () => {
+    expect(terrainWarning(40, -25)).toBe(true);
+    expect(terrainWarning(40, -5)).toBe(false);
+    expect(terrainWarning(400, -60)).toBe(false);
+    expect(terrainWarning(60, 10)).toBe(false);
   });
 });

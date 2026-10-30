@@ -286,7 +286,7 @@ export class Hud {
             : '';
     if (this.status.textContent !== statusText) this.status.textContent = statusText;
     this.status.classList.toggle('is-visible', statusText.length > 0);
-    this.status.classList.toggle('is-warning', state.overheated || state.stalled);
+    this.status.classList.toggle('is-warning', state.overheated || state.stalled || statusText === 'PULL UP');
 
     const extra = state.extraMeter;
     this.extraMeter.hidden = !extra;

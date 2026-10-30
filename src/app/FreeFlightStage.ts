@@ -28,6 +28,7 @@ import {
 import { showFloor } from '../activities/places';
 import { getDiscovery } from '../activities/catalog';
 import { TRICK_NAMES } from '../activities/tricks';
+import { terrainWarning } from '../style/StyleTracker';
 import { DeliveryAutopilot, showPilot } from '../activities/autopilot';
 import {
   createDeliveryStops,
@@ -300,6 +301,8 @@ export class FreeFlightStage {
         hud.setCountdown('GO');
         audio.countdownBeep(true);
         window.setTimeout(() => hud.clearCountdown(), 900);
+        if (this.options.activity.kind === 'show')
+          hud.showMessage('AEROBATIC CONTROLS: hold back to loop, hold over to roll', 'neutral', 3.6);
         break;
       case 'crash':
         this.burst.trigger(this.sim.flight.position);
@@ -511,7 +514,8 @@ export class FreeFlightStage {
     state.stalled = flight.stalled && sim.phase === 'flying';
     state.time = activity.kind === 'show' ? sim.timeLeft : sim.clock;
     state.wind = windReadout(sim.windVector, this.camera.camera);
-    state.note = null;
+    state.note =
+      terrainWarning(flight.altitude, flight.velocity.y) && sim.phase === 'flying' ? 'PULL UP' : null;
     state.extraMeter = null;
     state.marker = target ? this.projectMarker(target) : null;
     state.gateDistance = target ? Math.hypot(target.x - flight.position.x, target.z - flight.position.z) : 0;
@@ -545,7 +549,7 @@ export class FreeFlightStage {
           : 'Delivered';
         if (sim.carrying)
           state.extraMeter = { label: 'Cargo', value: sim.condition / 100, warn: sim.condition < 50 };
-        if (stop && state.gateDistance < 800)
+        if (stop && state.gateDistance < 800 && !state.note)
           state.note = `HOOK BELOW ${this.hookHeight()} m AND ${this.hookSpeed()} km/h`;
         break;
       }
