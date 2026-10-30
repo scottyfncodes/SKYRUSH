@@ -359,3 +359,76 @@ export class EngineSmoke {
     this.material.dispose();
   }
 }
+
+const RAIN_DROPS = 420;
+const RAIN_BOX = 46;
+const RAIN_FALL = 28;
+const _rel = new Vector3();
+
+/**
+ * Rain streaks in a box that travels with the camera. Each drop falls with the
+ * wind and is drawn along its motion relative to the aircraft, so the rain
+ * slants harder the faster you fly. One draw call, no allocation per frame.
+ */
+export class RainStreaks {
+  private readonly lines: LineSegments;
+  private readonly material: LineBasicMaterial;
+  private readonly positions: Float32Array;
+  private readonly offsets: Float32Array;
+  private readonly rng = createRng(911);
+
+  constructor(
+    scene: Scene,
+    private readonly intensity: number,
+  ) {
+    this.positions = new Float32Array(RAIN_DROPS * 6);
+    this.offsets = new Float32Array(RAIN_DROPS * 3);
+    for (let i = 0; i < RAIN_DROPS * 3; i += 1) this.offsets[i] = (this.rng() - 0.5) * RAIN_BOX;
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(this.positions, 3));
+    this.material = new LineBasicMaterial({
+      color: 0xdfe8f0,
+      transparent: true,
+      opacity: 0.28 * intensity,
+      depthWrite: false,
+      fog: false,
+    });
+    this.lines = new LineSegments(geometry, this.material);
+    this.lines.frustumCulled = false;
+    scene.add(this.lines);
+  }
+
+  /** `velocity` is the aircraft's ground velocity, `wind` the air mass velocity. */
+  update(camera: Camera, velocity: Vector3, wind: Vector3, dt: number): void {
+    _rel.set(wind.x - velocity.x, -RAIN_FALL - velocity.y, wind.z - velocity.z);
+    const streak = clamp01(0.03 + _rel.length() * 0.0009);
+    const half = RAIN_BOX / 2;
+    const o = this.offsets;
+    const p = this.positions;
+    const c = camera.position;
+    for (let i = 0; i < RAIN_DROPS; i += 1) {
+      const k = i * 3;
+      for (let axis = 0; axis < 3; axis += 1) {
+        let value = o[k + axis]! + (axis === 0 ? _rel.x : axis === 1 ? _rel.y : _rel.z) * dt;
+        if (value > half) value -= RAIN_BOX;
+        else if (value < -half) value += RAIN_BOX;
+        o[k + axis] = value;
+      }
+      const j = i * 6;
+      p[j] = c.x + o[k]!;
+      p[j + 1] = c.y + o[k + 1]!;
+      p[j + 2] = c.z + o[k + 2]!;
+      p[j + 3] = p[j]! - _rel.x * streak;
+      p[j + 4] = p[j + 1]! - _rel.y * streak;
+      p[j + 5] = p[j + 2]! - _rel.z * streak;
+    }
+    (this.lines.geometry.attributes.position as BufferAttribute).needsUpdate = true;
+    this.material.opacity = 0.28 * this.intensity;
+  }
+
+  dispose(): void {
+    this.lines.geometry.dispose();
+    this.material.dispose();
+    this.lines.removeFromParent();
+  }
+}

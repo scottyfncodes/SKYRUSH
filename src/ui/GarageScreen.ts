@@ -43,7 +43,9 @@ import {
 import { getBadge } from '../progression/badges';
 import {
   buildCharacter,
+  flightParametersForBuild,
   performanceForBuild,
+  summarisePerformance,
   type PerformanceSummary,
   type RatingKey,
   type Specialty,
@@ -63,6 +65,8 @@ import { factorySetupsFor } from '../aircraft/setups';
 import { COURSES } from '../course/courses';
 import { formatCredits } from '../core/format';
 import { airframeSilhouette } from './silhouette';
+import { ACTIVITIES } from '../activities/catalog';
+import { strongKinds } from '../activities/fit';
 import type { HangarFocus } from '../app/GarageStage';
 
 export type GarageSection = 'aircraft' | 'parts' | 'paint' | 'setups';
@@ -1065,6 +1069,20 @@ export class GarageScreen extends Screen {
       }
     }
 
+    // Aircraft: what they shine at in the activities, and their logbook.
+    let shines: string | null = null;
+    let logbook: string | null = null;
+    if (item.kind === 'airframe') {
+      const build = profile.hangar[item.id]?.build ?? defaultBuildFor(item);
+      const params = flightParametersForBuild(build);
+      const kinds = strongKinds(ACTIVITIES, params, summarisePerformance(params));
+      shines = kinds.length ? kinds.join(', ') : 'All-round flying';
+      const log = profile.logbook[item.id];
+      if (log && log.flights > 0)
+        logbook = `${log.flights} flight${log.flights === 1 ? '' : 's'} · ${log.distance.toFixed(0)} km${
+          log.medals > 0 ? ` · ${log.medals} medal${log.medals === 1 ? '' : 's'}` : ''
+        }`;
+    }
     const specialty = ROLE_SPECIALTY[item.kind === 'airframe' ? '' : item.role];
     const suits = specialty ? courseForSpecialty(specialty) : undefined;
     const upgradeOf = item.requires ? getItem(item.requires)?.name : undefined;
@@ -1096,6 +1114,8 @@ export class GarageScreen extends Screen {
           ['Upgrade of', upgradeOf ?? null],
           ['Also swaps', this.sectionKnockOn(profile, item)],
           ['Suits', suits ?? null],
+          ['Shines at', shines],
+          ['Logbook', logbook],
         ]),
       ),
       h(

@@ -24,6 +24,7 @@ import {
   type StyleAward,
 } from '../style/StyleTracker';
 import { computeAiInput, computeCruiseInput, type AiPersonality } from '../ai/AiPilot';
+import { sampleWind, type Conditions } from '../activities/conditions';
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
 
@@ -60,6 +61,10 @@ export interface Racer {
   groundedTimer: number;
   lastGateTime: number;
   splitTimes: number[];
+  /** Normalised offset (0 centre … 1 frame) of each gate passed, for accuracy scoring. */
+  gateOffsets: number[];
+  /** Strict runs only: why the run ended early. */
+  failed: 'missed-gate' | 'crash' | 'time' | null;
 }
 
 export type RaceEvent =
@@ -85,6 +90,10 @@ export interface RaceOptions {
   countdownSeconds?: number;
   missPenalty?: number;
   outOfBoundsPenalty?: number;
+  /** Weather: the wind every aircraft flies through. Default still air. */
+  conditions?: Conditions;
+  /** Precision runs: a missed gate or a crash ends the player's run. */
+  strict?: boolean;
 }
 
 export interface Standing {
@@ -143,6 +152,9 @@ export class RaceSimulation {
   readonly outOfBoundsPenalty: number;
   readonly aiSkill: number;
   private readonly environment: FlightEnvironment;
+  private readonly wind = new Vector3();
+  readonly conditions: Conditions | null;
+  readonly strict: boolean;
   /** Style scoring for the player. Recreated with the simulation, so restarts never carry state over. */
   readonly style = new StyleTracker();
   private readonly playerAhead = new Map<string, boolean>();
@@ -157,7 +169,9 @@ export class RaceSimulation {
     this.outOfBoundsPenalty = options.outOfBoundsPenalty ?? 2;
     this.aiSkill = options.aiSkill ?? 1;
     this.countdown = options.countdownSeconds ?? 3;
-    this.environment = flightEnvironmentFor(circuit);
+    this.conditions = options.conditions ?? null;
+    this.strict = options.strict === true;
+    this.environment = { ...flightEnvironmentFor(circuit), wind: this.conditions ? this.wind : undefined };
     this.lastCountdownValue = Math.ceil(this.countdown) + 1;
 
     const spawnForward = new Vector3(0, 0, 1).applyQuaternion(circuit.spawn.orientation);
@@ -194,11 +208,18 @@ export class RaceSimulation {
         groundedTimer: 0,
         lastGateTime: 0,
         splitTimes: [],
+        gateOffsets: [],
+        failed: null,
       };
     });
     const player = this.racers.find((racer) => racer.config.isPlayer);
     if (!player) throw new Error('A race needs exactly one player racer');
     this.player = player;
+  }
+
+  /** The wind right now (zero in still air). */
+  get windVector(): Vector3 {
+    return this.wind;
   }
 
   get gateCount(): number {
@@ -339,6 +360,14 @@ export class RaceSimulation {
 
     racer.previousPosition.copy(flight.position);
     const wasOverheated = flight.overheated;
+    if (this.conditions)
+      this.environment.rollGust = sampleWind(
+        this.conditions,
+        this.clock,
+        flight.position.x,
+        flight.position.z,
+        this.wind,
+      );
     stepFlight(flight, racer.input, racer.params, this.environment, dt, isPlayer ? this.assist : AI_ASSIST);
 
     if (!wasOverheated && flight.overheated) {
@@ -365,6 +394,7 @@ export class RaceSimulation {
       flight.speed = 0;
       this.events.push({ type: 'crash', racerId: config.id, isPlayer, penalty });
       if (isPlayer && !racer.finished) this.breakCombo('crash');
+      if (isPlayer && this.strict && !racer.finished) this.failPlayer('crash');
       return;
     }
     if (flight.groundContact === 'scrape') {
@@ -397,6 +427,7 @@ export class RaceSimulation {
       this.events.push({ type: 'gate', racerId: config.id, gate: gate.index, isPlayer, time: this.clock });
       if (isPlayer) {
         const offset = gateCrossingOffset(gate, racer.previousPosition, flight.position) ?? 1;
+        racer.gateOffsets.push(offset);
         const award = this.style.gate(offset);
         if (award.kind === 'perfect-gate') this.refundBoost(BOOST_REWARD.perfectGate);
         this.pushStyle(award, { gate: gate.index });
@@ -416,6 +447,10 @@ export class RaceSimulation {
         penalty: this.missPenalty,
       });
       if (isPlayer) this.breakCombo('missed-gate');
+      if (isPlayer && this.strict) {
+        this.failPlayer('missed-gate');
+        return;
+      }
       if (racer.nextGate >= this.gateCount) this.finish(racer);
     }
 
@@ -454,6 +489,22 @@ export class RaceSimulation {
       time: racer.finishTime,
     });
     if (racer.config.isPlayer) this.phase = 'finished';
+  }
+
+  /** Ends the player's strict run early (a miss, a crash, or out of time). */
+  failPlayer(reason: NonNullable<Racer['failed']>): void {
+    const player = this.player;
+    if (player.finished) return;
+    player.failed = reason;
+    this.finish(player);
+  }
+
+  /** Average accuracy (0..100) of the gates the player has passed: 100 is dead centre every time. */
+  get playerAccuracy(): number {
+    const offsets = this.player.gateOffsets;
+    if (offsets.length === 0) return 0;
+    const sum = offsets.reduce((total, offset) => total + Math.max(0, 1 - offset), 0);
+    return (sum / offsets.length) * 100;
   }
 
   /** Places the racer just past its last gate (or the start), facing the next gate. */

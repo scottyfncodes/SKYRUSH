@@ -29,6 +29,11 @@ import type { StyleAward } from '../style/StyleTracker';
 import { formatCredits } from '../core/format';
 import type { PlayerSettings } from '../progression/profile';
 import { clamp, clamp01, smoothstep } from '../core/math';
+import { CLEAR_CONDITIONS, WEATHER, gradeTheme, type Conditions } from '../activities/conditions';
+import { GhostRecorder, sampleGhost, type GhostTrack } from '../activities/ghost';
+import { testGateCrossing } from '../course/gates';
+import { RainStreaks } from '../render/FlightEffects';
+import { windReadout } from './windReadout';
 
 export interface RaceStageOptions {
   circuit: Circuit;
@@ -43,7 +48,25 @@ export interface RaceStageOptions {
   challenge?: string;
   /** A rival's line shown over the countdown. */
   gridLine?: { callsign: string; text: string };
+  /** `trial` and `precision` fly the course alone. Default `race`. */
+  mode?: 'race' | 'trial' | 'precision';
+  conditions?: Conditions;
+  /** Time trials: the lap to chase. */
+  ghost?: GhostTrack | null;
+  /** Precision runs: the run fails if the last gate is not reached in time (s). */
+  timeLimit?: number;
   onPlayerFinished: (standings: Standing[]) => void;
+}
+
+/** What a solo run (trial or precision) produced, for the results. */
+export interface SoloRun {
+  time: number;
+  rawTime: number;
+  failed: 'missed-gate' | 'crash' | 'time' | null;
+  accuracy: number;
+  gatesPassed: number;
+  /** The lap as a ghost (trials that finished). */
+  lap: GhostTrack | null;
 }
 
 const RESULTS_DELAY = 2.6;
@@ -73,17 +96,31 @@ export class RaceStage {
   private readonly hudState: HudState;
   private readonly autopilotPersonality: AiPersonality;
   private readonly environment: WebGLRenderTarget;
+  private readonly mode: 'race' | 'trial' | 'precision';
+  private readonly conditions: Conditions;
+  private readonly ghostView: AircraftView | null = null;
+  private readonly ghostPosition = new Vector3();
+  private readonly ghostOrientation = new Quaternion();
+  /** Race time at which the ghost crossed each gate (NaN where it missed). */
+  private readonly ghostSplits: number[] = [];
+  private readonly recorder = new GhostRecorder();
+  private readonly rain: RainStreaks | null;
+  private ghostDelta: number | null = null;
   paused = false;
   /** Test harness hooks (only reachable through the e2e interface). */
   autopilot = false;
   timeScale = 1;
 
   constructor(private readonly options: RaceStageOptions) {
-    const { circuit, renderer, setup } = options;
+    const { renderer, setup } = options;
     const build = setup.build;
+    this.mode = options.mode ?? 'race';
+    this.conditions = options.conditions ?? CLEAR_CONDITIONS;
+    const circuit = { ...options.circuit, theme: gradeTheme(options.circuit.theme, this.conditions) };
     this.world = createWorld(circuit, {
       shadows: renderer.options.shadows,
       quality: renderer.options.quality,
+      startLine: this.mode !== 'precision',
     });
     this.camera = new ChaseCamera(renderer.aspect);
     this.burst = new CrashBurst(this.world.scene);
@@ -101,16 +138,19 @@ export class RaceStage {
       sun: theme.sun.direction,
       sunColor: theme.sun.color,
     });
+    const solo = this.mode !== 'race';
     this.configs = [
       { id: 'player', name: 'You', callsign: 'YOU', isPlayer: true, build },
-      ...AI_PERSONALITIES.filter((ai) => !options.challenge || ai.id === options.challenge).map((ai) => ({
-        id: ai.id,
-        name: ai.name,
-        callsign: ai.callsign,
-        isPlayer: false,
-        build: ai.build,
-        ai,
-      })),
+      ...AI_PERSONALITIES.filter((ai) => !solo && (!options.challenge || ai.id === options.challenge)).map(
+        (ai) => ({
+          id: ai.id,
+          name: ai.name,
+          callsign: ai.callsign,
+          isPlayer: false,
+          build: ai.build,
+          ai,
+        }),
+      ),
     ];
     this.autopilotPersonality = { ...AI_PERSONALITIES[0]!, build, skill: 1 };
     this.hudState = {
@@ -149,14 +189,49 @@ export class RaceStage {
       this.views.set(config.id, view);
       this.world.scene.add(view.root);
     }
+    const ghost = options.ghost;
+    if (this.mode === 'trial' && ghost) {
+      this.ghostView = new AircraftView(ghost.setup ?? setup, this.environment.texture);
+      this.ghostView.makeGhost();
+      this.ghostView.setGearDown(false);
+      this.ghostView.setVisible(false);
+      this.world.scene.add(this.ghostView.root);
+      this.ghostSplits = ghostGateTimes(ghost, options.circuit);
+    }
+    const weather = WEATHER[this.conditions.weather];
+    this.rain =
+      weather.rain > 0 && !this.reducedMotion ? new RainStreaks(this.world.scene, weather.rain) : null;
+    options.audio.setRain(weather.rain);
+    options.hud.setMode(this.mode);
     this.createSimulation();
+  }
+
+  /** The finished (or failed) solo run, for the results. */
+  soloRun(): SoloRun {
+    const player = this.sim.player;
+    const finished = player.finished && player.failed === null;
+    return {
+      time: player.finishTime,
+      rawTime: player.rawTime,
+      failed: player.failed,
+      accuracy: this.sim.playerAccuracy,
+      gatesPassed: player.gatesPassed,
+      lap:
+        finished && this.mode === 'trial'
+          ? this.recorder.finish(player.finishTime, 'Your best', this.options.setup)
+          : null,
+    };
   }
 
   private createSimulation(): void {
     this.sim = new RaceSimulation(this.options.circuit, this.configs, {
       assist: { strength: this.options.settings.assist },
       aiSkill: this.options.aiSkill,
+      conditions: this.conditions.weather === 'clear' ? undefined : this.conditions,
+      strict: this.mode === 'precision',
     });
+    this.recorder.reset();
+    this.ghostDelta = null;
     this.missedGates.clear();
     this.resultsTimer = -1;
     this.finishedNotified = false;
@@ -216,6 +291,7 @@ export class RaceStage {
     for (let i = 0; i < steps; i += 1) {
       this.samplePlayerInput(step);
       this.sim.step(step, this.playerInput);
+      this.afterStep();
       this.handleEvents();
     }
     if (this.sim.phase === 'finished' && !this.finishedNotified) {
@@ -250,12 +326,24 @@ export class RaceStage {
     while (this.sim.phase !== 'finished' && elapsed < maxSeconds) {
       this.samplePlayerInput(step);
       this.sim.step(step, this.playerInput);
+      this.afterStep();
       this.handleEvents();
       elapsed += step;
     }
     if (this.sim.phase === 'finished' && !this.finishedNotified) {
       this.finishedNotified = true;
       this.options.onPlayerFinished(this.sim.projectFinalStandings());
+    }
+  }
+
+  /** Solo-run bookkeeping after each simulation step: the lap recording and the time limit. */
+  private afterStep(): void {
+    const player = this.sim.player;
+    if (this.sim.phase === 'racing' && !player.finished) {
+      if (this.mode === 'trial') this.recorder.record(this.sim.clock, player.flight);
+      const limit = this.options.timeLimit;
+      if (this.mode === 'precision' && limit !== undefined && this.sim.clock > limit)
+        this.sim.failPlayer('time');
     }
   }
 
@@ -314,6 +402,10 @@ export class RaceStage {
         if (event.isPlayer) {
           audio.gatePass();
           this.world.setGateStates(this.sim.player.nextGate, this.missedGates);
+          const split = this.ghostSplits[event.gate];
+          if (split !== undefined && Number.isFinite(split)) {
+            this.ghostDelta = this.sim.clock + this.sim.player.penaltySeconds - split;
+          }
           if (event.gate === this.sim.gateCount - 1) hud.showMessage('FINISH', 'good', 3);
         }
         break;
@@ -322,7 +414,13 @@ export class RaceStage {
           audio.gateMissed();
           this.missedGates.add(event.gate);
           this.world.setGateStates(this.sim.player.nextGate, this.missedGates);
-          hud.showMessage(`GATE ${event.gate + 1} MISSED  +${event.penalty}s`, 'bad', 2.5);
+          hud.showMessage(
+            this.mode === 'precision'
+              ? `GATE ${event.gate + 1} MISSED: run over`
+              : `GATE ${event.gate + 1} MISSED  +${event.penalty}s`,
+            'bad',
+            2.5,
+          );
         }
         break;
       case 'wrong-way':
@@ -338,7 +436,11 @@ export class RaceStage {
           audio.crash();
           this.camera.impulse(0.8);
           pulse(this.options.settings.haptics, 60);
-          hud.showMessage(`CRASHED  +${event.penalty}s`, 'bad', 2.5);
+          hud.showMessage(
+            this.mode === 'precision' ? 'CRASHED: run over' : `CRASHED  +${event.penalty}s`,
+            'bad',
+            2.5,
+          );
         }
         break;
       }
@@ -396,7 +498,7 @@ export class RaceStage {
       case 'perfect-gate':
         audio.perfectGate(award.multiplier);
         if (gate !== undefined) this.world.flashGate(gate);
-        hud.showToast(`PERFECT GATE ${points}${tier}`, tone);
+        hud.showToast(this.mode === 'precision' ? 'BULLSEYE' : `PERFECT GATE ${points}${tier}`, tone);
         pulse(settings.haptics, 12);
         break;
       case 'near-miss':
@@ -470,6 +572,18 @@ export class RaceStage {
           );
       }
     }
+    if (this.ghostView) {
+      const visible =
+        this.sim.phase !== 'countdown' &&
+        sampleGhost(this.options.ghost!, this.sim.clock, this.ghostPosition, this.ghostOrientation);
+      this.ghostView.setVisible(visible);
+      if (visible) {
+        this.ghostView.root.position.copy(this.ghostPosition);
+        this.ghostView.root.quaternion.copy(this.ghostOrientation);
+      }
+    }
+    if (this.rain && frameDt > 0)
+      this.rain.update(this.camera.camera, flight.velocity, this.sim.windVector, frameDt);
     this.camera.setAspect(renderer.aspect);
     this.world.update(frameDt, player.flight.position);
 
@@ -499,6 +613,30 @@ export class RaceStage {
     _toGate.subVectors(nextGate.position, player.flight.position);
     state.gateDistance = _toGate.length();
     state.marker = player.finished ? null : this.projectMarker(nextGate.position);
+    state.wind = this.sim.conditions ? windReadout(this.sim.windVector, this.camera.camera) : null;
+    if (this.mode === 'trial') {
+      const delta = this.ghostDelta;
+      state.lead = this.options.ghost
+        ? {
+            value: delta === null ? '±0.00' : `${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(2)}`,
+            detail: `vs ${this.options.ghost.label.toLowerCase()} · gate ${Math.min(player.nextGate + 1, state.gateCount)}/${state.gateCount}`,
+            tone: delta === null ? null : delta > 0 ? 'bad' : 'good',
+          }
+        : {
+            value: 'Solo',
+            detail: `Gate ${Math.min(player.nextGate + 1, state.gateCount)}/${state.gateCount}`,
+            tone: null,
+          };
+    } else if (this.mode === 'precision') {
+      const limit = this.options.timeLimit ?? 0;
+      const left = limit - this.sim.clock;
+      state.lead = {
+        value: player.gateOffsets.length > 0 ? `${Math.round(this.sim.playerAccuracy)}%` : '–',
+        detail: `Accuracy · gate ${Math.min(player.nextGate + 1, state.gateCount)}/${state.gateCount}`,
+        tone: null,
+      };
+      state.note = this.sim.phase === 'racing' && left < 15 && left > 0 ? `${Math.ceil(left)} s LEFT` : null;
+    }
     hud.update(state);
 
     audio.updateEngine(
@@ -546,6 +684,10 @@ export class RaceStage {
       view.dispose();
     }
     this.views.clear();
+    this.ghostView?.root.removeFromParent();
+    this.ghostView?.dispose();
+    this.rain?.dispose();
+    this.options.audio.setRain(0);
     this.burst.dispose();
     this.speedLines?.dispose();
     this.contrails.dispose();
@@ -558,3 +700,23 @@ export class RaceStage {
 
 const formatMultiplierShort = (multiplier: number): string =>
   Number.isInteger(multiplier) ? String(multiplier) : multiplier.toFixed(1);
+
+/** When the ghost crossed each gate plane (NaN where it never did), for live splits. */
+const ghostGateTimes = (ghost: GhostTrack, circuit: Circuit): number[] => {
+  const times: number[] = [];
+  const a = new Vector3();
+  const b = new Vector3();
+  const qa = new Quaternion();
+  let gate = 0;
+  const samples = ghost.samples.length / 7;
+  for (let i = 1; i < samples && gate < circuit.gates.length; i += 1) {
+    sampleGhost(ghost, (i - 1) * 0.1 + 1e-6, a, qa);
+    sampleGhost(ghost, i * 0.1 - 1e-6, b, qa);
+    const crossing = testGateCrossing(circuit.gates[gate]!, a, b, 30);
+    if (crossing === 'passed' || crossing === 'missed') {
+      times[gate] = crossing === 'passed' ? i * 0.1 : Number.NaN;
+      gate += 1;
+    }
+  }
+  return times;
+};

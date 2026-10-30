@@ -13,7 +13,7 @@ import {
 } from './catalog';
 import { FreeFlightSimulation, withCargo, type FreeFlightEvent } from './FreeFlightSimulation';
 import { HOOK_RADIUS, resolveDiscovery, showFloor } from './places';
-import { steerToPoint } from './autopilot';
+import { DeliveryAutopilot } from './autopilot';
 import { CLEAR_CONDITIONS } from './conditions';
 import { flightParametersForBuild } from '../aircraft/performance';
 
@@ -32,10 +32,7 @@ const build = (airframe: string): AircraftBuild => defaultBuildFor(getAirframe(a
 const deliveries = ACTIVITIES.filter((a): a is DeliveryActivity => a.kind === 'delivery');
 const shows = ACTIVITIES.filter((a): a is ShowActivity => a.kind === 'show');
 
-/**
- * Flies a delivery the way the route is meant to be flown: along the valley
- * (the racing line's gates) to each stop, then slow and low over it.
- */
+/** Flies a delivery along the valley with the shared delivery autopilot. */
 const flyDelivery = (activity: DeliveryActivity, airframe: string, conditions = activity.conditions) => {
   const circuit = circuitFor(activity.regionId);
   const sim = new FreeFlightSimulation(circuit, activity, build(airframe), {
@@ -43,34 +40,11 @@ const flyDelivery = (activity: DeliveryActivity, airframe: string, conditions = 
     conditions,
     countdownSeconds: 0,
   });
+  const pilot = new DeliveryAutopilot(activity.stops, activity.hookSpeedKmh);
   const input: FlightInput = { ...NEUTRAL_INPUT };
   const events: FreeFlightEvent[] = [];
-  let gate = 0;
   for (let t = 0; t < 400 && sim.phase !== 'finished'; t += DT) {
-    const stopSpec = activity.stops[sim.nextStop]!;
-    const stop = sim.currentStop!;
-    const p = sim.flight.position;
-    // Follow the gates up to the stop's segment, then head for the stop itself.
-    while (gate <= stopSpec.after) {
-      const g = circuit.gates[gate]!.position;
-      if (Math.hypot(g.x - p.x, g.z - p.z) > 140) break;
-      gate += 1;
-    }
-    const viaGate = gate <= stopSpec.after ? circuit.gates[gate]!.position : null;
-    const distance = Math.hypot(p.x - stop.position.x, p.z - stop.position.z);
-    const approach = !viaGate && distance < 650;
-    const hookSpeed = Math.max(activity.hookSpeedKmh / 3.6 - 6, sim.params.stallSpeed * 1.25);
-    const target = viaGate
-      ? { x: viaGate.x, y: viaGate.y, z: viaGate.z }
-      : { x: stop.position.x, y: stop.position.y + (approach ? 20 : 50), z: stop.position.z };
-    steerToPoint(
-      sim.flight,
-      sim.params,
-      circuit.terrain.heightAt,
-      target,
-      approach ? hookSpeed : sim.params.maxSpeed * 0.75,
-      input,
-    );
+    pilot.steer(sim, input);
     sim.step(DT, input);
     events.push(...sim.drainEvents());
   }

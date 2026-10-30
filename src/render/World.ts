@@ -108,10 +108,16 @@ const makeLabelTexture = (text: string, color: string): CanvasTexture => {
   return texture;
 };
 
-export const createWorld = (
-  circuit: Circuit,
-  options: { shadows: boolean; quality: RenderQuality },
-): WorldHandles => {
+export interface WorldOptions {
+  shadows: boolean;
+  quality: RenderQuality;
+  /** Race gates and bonus rings (off for free-flight activities). Default true. */
+  gates?: boolean;
+  /** The start pad and its towers at the spawn (off away from the grid). Default true. */
+  startLine?: boolean;
+}
+
+export const createWorld = (circuit: Circuit, options: WorldOptions): WorldHandles => {
   const low = options.quality === 'low';
   const { theme } = circuit;
   const scene = new Scene();
@@ -216,7 +222,7 @@ export const createWorld = (
   const scatter = createScatter(low ? { ...theme, scatter: [] } : theme, circuit.terrain, circuit.seaLevel, {
     center,
     extent: 2900,
-    seed: circuit.gates.length * 101 + Math.round(center.x),
+    seed: circuit.propSeed,
   });
   for (const mesh of scatter.meshes) scene.add(mesh);
   disposables.push(scatter);
@@ -259,12 +265,15 @@ export const createWorld = (
   disposables.push(markerGeometry, markerMaterial);
 
   // --- Gates -------------------------------------------------------------------------------
-  const gates: GateVisual[] = circuit.gates.map((gate) =>
-    createGateVisual(gate, circuit, scene, disposables),
-  );
+  const showGates = options.gates !== false;
+  const gates: GateVisual[] = showGates
+    ? circuit.gates.map((gate) => createGateVisual(gate, circuit, scene, disposables))
+    : [];
 
   // --- Bonus rings ---------------------------------------------------------------------------
-  const rings: RingVisual[] = circuit.rings.map((ring) => createRingVisual(ring, scene, disposables));
+  const rings: RingVisual[] = showGates
+    ? circuit.rings.map((ring) => createRingVisual(ring, scene, disposables))
+    : [];
 
   // --- Landmarks and facility -----------------------------------------------------------------
   const landmarks = new Group();
@@ -275,8 +284,7 @@ export const createWorld = (
   scene.add(landmarks);
 
   // Start line banner across the spawn.
-  const startLine = createStartLine(circuit, disposables);
-  scene.add(startLine);
+  if (options.startLine !== false) scene.add(createStartLine(circuit, disposables));
 
   const setGateStates = (nextGate: number, missed: Set<number>): void => {
     for (const visual of gates) {

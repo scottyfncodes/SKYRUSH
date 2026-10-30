@@ -19,7 +19,19 @@ export interface HudState {
   marker: { x: number; y: number; onScreen: boolean; angle: number } | null;
   penalties: number;
   style: { score: number; multiplier: number; comboTime: number; rings: number; ringTotal: number };
+  /** Activity overrides for the top-left readout (instead of the race position). */
+  lead?: { value: string; detail: string; tone?: 'good' | 'bad' | null } | null;
+  /** Activity override for the top-right label (instead of "Next gate N"). */
+  objective?: string | null;
+  /** A third meter for activities (cargo condition). */
+  extraMeter?: { label: string; value: number; warn: boolean } | null;
+  /** Wind relative to the view: angle (rad, 0 = blowing straight ahead) and speed. */
+  wind?: { angle: number; kmh: number } | null;
+  /** Overrides the status line (held figures, hook hints). */
+  note?: string | null;
 }
+
+export type HudMode = 'race' | 'trial' | 'precision' | 'show' | 'delivery' | 'explore';
 
 export type ToastTone = 'skill' | 'ring' | 'tier' | 'break';
 
@@ -51,6 +63,13 @@ export class Hud {
   private readonly styleRings: HTMLSpanElement;
   private readonly comboFill: HTMLDivElement;
   private readonly toast: HTMLDivElement;
+  private readonly extraMeter: HTMLDivElement;
+  private readonly extraLabel: HTMLSpanElement;
+  private readonly extraFill: HTMLDivElement;
+  private readonly wind: HTMLDivElement;
+  private readonly windArrow: HTMLDivElement;
+  private readonly windSpeed: HTMLSpanElement;
+  private mode: HudMode = 'race';
   private messageTimer = 0;
   private messageTimeout: number | null = null;
   private toastTimeout: number | null = null;
@@ -110,6 +129,23 @@ export class Hud {
       h('div', { className: 'hud-style__track' }, this.comboFill),
     );
     this.toast = h('div', { className: 'hud-toast', dataset: { testid: 'hud-toast' } });
+    this.extraLabel = h('span', { className: 'meter__label', text: 'Cargo' });
+    this.extraFill = h('div', { className: 'meter__fill meter__fill--cargo' });
+    this.extraMeter = h(
+      'div',
+      { className: 'meter meter--extra', dataset: { testid: 'hud-extra' } },
+      this.extraLabel,
+      h('div', { className: 'meter__track' }, this.extraFill),
+    );
+    this.windArrow = h('div', { className: 'hud-wind__arrow', attrs: { 'aria-hidden': 'true' } });
+    this.windSpeed = h('span', { className: 'hud-wind__speed' });
+    this.wind = h(
+      'div',
+      { className: 'hud-wind', dataset: { testid: 'hud-wind' } },
+      this.windArrow,
+      h('span', { className: 'hud-wind__label', text: 'Wind' }),
+      this.windSpeed,
+    );
 
     this.element = h(
       'div',
@@ -125,7 +161,8 @@ export class Hud {
         this.speed,
         h('span', { className: 'hud-speed__unit', text: 'km/h' }),
       ),
-      h('div', { className: 'hud-meters' }, this.boostMeter, this.heatMeter),
+      h('div', { className: 'hud-meters' }, this.boostMeter, this.heatMeter, this.extraMeter),
+      this.wind,
       this.marker,
       this.arrow,
       this.message,
@@ -133,11 +170,22 @@ export class Hud {
       this.status,
     );
     this.element.hidden = true;
+    this.extraMeter.hidden = true;
+    this.wind.hidden = true;
+    this.setMode('race');
     parent.appendChild(this.element);
   }
 
   show(): void {
     this.element.hidden = false;
+  }
+
+  /** Switches which readouts the HUD shows (a Grand Prix shows them all). */
+  setMode(mode: HudMode): void {
+    this.element.classList.remove(`hud--${this.mode}`);
+    this.mode = mode;
+    this.element.classList.add(`hud--${mode}`);
+    this.element.dataset.mode = mode;
   }
 
   hide(): void {
@@ -203,18 +251,23 @@ export class Hud {
   }
 
   update(state: HudState): void {
-    this.position.textContent = ordinal(state.position);
-    this.progress.textContent = `Gate ${Math.min(state.nextGate + 1, state.gateCount)} / ${state.gateCount}`;
+    const lead = state.lead;
+    this.position.textContent = lead ? lead.value : ordinal(state.position);
+    this.position.dataset.tone = lead?.tone ?? '';
+    this.progress.textContent = lead
+      ? lead.detail
+      : `Gate ${Math.min(state.nextGate + 1, state.gateCount)} / ${state.gateCount}`;
     this.timer.textContent = formatRaceTime(state.time);
     this.penalties.textContent = state.penalties > 0 ? `+${state.penalties}s` : '';
     this.speed.textContent = formatSpeedKmh(state.speed);
-    this.gateLabel.textContent =
-      state.nextGate >= state.gateCount
+    this.gateLabel.textContent = state.objective
+      ? state.objective
+      : state.nextGate >= state.gateCount
         ? 'Finish'
         : state.nextGate === state.gateCount - 1
           ? 'Finish gate'
           : `Next gate ${state.nextGate + 1}`;
-    this.gateDistance.textContent = `${Math.round(state.gateDistance)} m`;
+    this.gateDistance.textContent = state.gateDistance > 0 ? `${Math.round(state.gateDistance)} m` : '';
     this.boostFill.style.width = `${Math.round(state.boost * 100)}%`;
     this.heatFill.style.width = `${Math.round(state.heat * 100)}%`;
     this.boostMeter.classList.toggle('is-active', state.boosting);
@@ -226,12 +279,28 @@ export class Hud {
       ? 'OVERHEATED: ease off'
       : state.stalled
         ? 'STALL: nose down, throttle up'
-        : state.airbrake
-          ? 'AIRBRAKE'
-          : '';
+        : state.note
+          ? state.note
+          : state.airbrake
+            ? 'AIRBRAKE'
+            : '';
     if (this.status.textContent !== statusText) this.status.textContent = statusText;
     this.status.classList.toggle('is-visible', statusText.length > 0);
     this.status.classList.toggle('is-warning', state.overheated || state.stalled);
+
+    const extra = state.extraMeter;
+    this.extraMeter.hidden = !extra;
+    if (extra) {
+      this.extraLabel.textContent = extra.label;
+      this.extraFill.style.width = `${Math.round(extra.value * 100)}%`;
+      this.extraMeter.classList.toggle('is-hot', extra.warn);
+    }
+    const wind = state.wind;
+    this.wind.hidden = !wind || wind.kmh < 1;
+    if (wind && wind.kmh >= 1) {
+      this.windArrow.style.transform = `rotate(${wind.angle.toFixed(3)}rad)`;
+      this.windSpeed.textContent = `${wind.kmh} km/h`;
+    }
 
     const style = state.style;
     if (style.score !== this.lastScore) {

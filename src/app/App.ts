@@ -2,6 +2,22 @@ import { createCircuit, type Circuit } from '../course/circuit';
 import { Renderer, detectWebGL, isCoarsePointer } from '../render/Renderer';
 import { GarageStage } from './GarageStage';
 import { RaceStage } from './RaceStage';
+import { FreeFlightStage } from './FreeFlightStage';
+import { FlightBoardScreen } from '../ui/FlightBoardScreen';
+import { ActivityResultsScreen, type ActivityResultsData } from '../ui/ActivityResultsScreen';
+import { getActivity, type Activity, type PrecisionActivity } from '../activities/catalog';
+import type { FreeFlightActivity, FreeFlightResult } from '../activities/FreeFlightSimulation';
+import { createPrecisionCircuit } from '../activities/places';
+import { loadGhost, recordClubGhost, saveGhost, type GhostTrack } from '../activities/ghost';
+import {
+  applyActivityOutcome,
+  licenceStatus,
+  logFlight,
+  selectActivity,
+  type ActivityOutcome,
+} from '../progression/activities';
+import { DEFAULT_BUILD } from '../aircraft/build';
+import { formatRaceTime } from '../core/format';
 import { InputManager } from '../controls/InputManager';
 import { AudioEngine } from '../audio/AudioEngine';
 import { Hud } from '../ui/Hud';
@@ -50,7 +66,9 @@ export type AppScreen =
   | 'paused'
   | 'results'
   | 'settings'
-  | 'rivals';
+  | 'rivals'
+  | 'board'
+  | 'activity-results';
 
 export interface TestHarness {
   getState: () => {
@@ -78,6 +96,24 @@ export interface TestHarness {
       z: number;
       style: ReturnType<StyleTracker['snapshot']>;
     };
+    /** The activity being flown (trials and precision runs also fill `race`). */
+    activity: null | {
+      id: string;
+      kind: string;
+      phase: string;
+      clock: number;
+      score: number;
+      condition: number;
+      nextStop: number;
+      carrying: boolean;
+      found: number;
+      inBox: boolean;
+      altitude: number;
+      speed: number;
+    };
+    licenceStars: number;
+    discoveries: string[];
+    activities: PlayerProfile['activities'];
   };
   /** GPU resources currently allocated (geometries, textures), for leak checks. */
   getRenderInfo: () => { geometries: number; textures: number };
@@ -86,6 +122,8 @@ export interface TestHarness {
   simulateToFinish: () => void;
   /** Puts the player on a straight approach to a bonus ring (`distance` m out). */
   approachRing: (index: number, distance?: number) => void;
+  /** Air shows: puts the aircraft over the middle of the show box. */
+  placeInShowBox: () => void;
 }
 
 declare global {
@@ -106,6 +144,11 @@ export class App {
   private renderer!: Renderer;
   private garageStage!: GarageStage;
   private raceStage: RaceStage | null = null;
+  private flightStage: FreeFlightStage | null = null;
+  /** The activity being flown or just finished (null for a Grand Prix or rival challenge). */
+  private currentActivity: Activity | null = null;
+  private readonly precisionCircuits = new Map<string, Circuit>();
+  private readonly clubGhosts = new Map<string, GhostTrack>();
   private readonly input: InputManager;
   private readonly audio = new AudioEngine();
   private readonly hud: Hud;
@@ -119,6 +162,8 @@ export class App {
   private readonly settings: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly rivals: RivalsScreen;
+  private readonly board: FlightBoardScreen;
+  private readonly activityResults: ActivityResultsScreen;
   /** Rival id while a one-on-one challenge race is running. */
   private challenge: string | null = null;
   private loading: HTMLDivElement | null = null;
@@ -153,6 +198,18 @@ export class App {
       onGarage: () => this.goGarage(),
       onControls: () => this.goSettings(),
       onRivals: () => this.goRivals(),
+      onBoard: () => this.goBoard(),
+    });
+    this.board = new FlightBoardScreen({
+      onBack: () => this.goMenu(),
+      onFly: (activityId) => this.fly(activityId),
+      onSelectRegion: (regionId) => this.selectCourse(regionId),
+      onSelectActivity: (activityId) => this.selectBoardActivity(activityId),
+    });
+    this.activityResults = new ActivityResultsScreen({
+      onAgain: () => this.flyAgain(),
+      onBoard: () => this.goBoard(),
+      onGarage: () => this.goGarage(),
     });
     this.rivals = new RivalsScreen({
       onBack: () => this.goMenu(),
@@ -214,6 +271,8 @@ export class App {
       this.settings.element,
       this.results.element,
       this.rivals.element,
+      this.board.element,
+      this.activityResults.element,
     );
     createRotatePrompt(this.ui);
 
@@ -224,7 +283,7 @@ export class App {
       } else if (action === 'restart' && (this.screen === 'race' || this.screen === 'paused')) {
         this.restartRace();
       } else if (action === 'recenter' && this.screen === 'race') {
-        this.raceStage?.recenterCamera();
+        this.stage?.recenterCamera();
       } else if (action === 'mute' && (this.screen === 'race' || this.screen === 'paused')) {
         const audio = !this.profile.settings.audio;
         this.changeSettings({ audio });
@@ -307,6 +366,7 @@ export class App {
       case 'briefing':
       case 'settings':
       case 'rivals':
+      case 'board':
         this.garageStage.frame =
           this.screen === 'garage'
             ? this.garage.freeArea()
@@ -319,7 +379,8 @@ export class App {
       case 'race':
       case 'paused':
       case 'results':
-        this.raceStage?.update(dt);
+      case 'activity-results':
+        this.stage?.update(dt);
         break;
       default:
         break;
@@ -336,10 +397,12 @@ export class App {
     this.settings.hide();
     this.results.hide();
     this.rivals.hide();
+    this.board.hide();
+    this.activityResults.hide();
     const inRace = screen === 'race';
     this.input.setEnabled(inRace);
     if (inRace) this.hud.show();
-    else if (screen !== 'paused' && screen !== 'results') this.hud.hide();
+    else if (screen !== 'paused' && screen !== 'results' && screen !== 'activity-results') this.hud.hide();
     this.garageStage.interactive = screen === 'menu' || screen === 'garage';
   }
 
@@ -354,6 +417,11 @@ export class App {
     return circuit;
   }
 
+  /** The stage being flown: a race (also trials and precision runs) or a free flight. */
+  private get stage(): RaceStage | FreeFlightStage | null {
+    return this.raceStage ?? this.flightStage;
+  }
+
   private selectCourse(courseId: string): void {
     const next = selectCircuit(this.profile, courseId);
     if (next === this.profile) return;
@@ -362,6 +430,16 @@ export class App {
     this.audio.uiClick();
     if (this.screen === 'menu') this.menu.update(this.profile);
     else if (this.screen === 'briefing') this.briefing.update(this.circuit, this.profile);
+    else if (this.screen === 'board') this.board.update(this.profile);
+  }
+
+  private selectBoardActivity(activityId: string): void {
+    const next = selectActivity(this.profile, activityId);
+    if (next === this.profile) return;
+    this.profile = next;
+    this.persist();
+    this.audio.uiClick();
+    this.board.update(this.profile);
   }
 
   private persist(): void {
@@ -400,6 +478,15 @@ export class App {
     this.setScreen('briefing');
     this.briefing.update(this.circuit, this.profile);
     this.briefing.show();
+  }
+
+  goBoard(): void {
+    this.disposeRace();
+    this.garageStage.setSetup(activeSetup(this.profile));
+    this.garageStage.setFocus('overview');
+    this.setScreen('board');
+    this.board.update(this.profile);
+    this.board.show();
   }
 
   goRivals(): void {
@@ -541,7 +628,7 @@ export class App {
       sensitivity: this.profile.settings.sensitivity,
     };
     this.audio.setEnabled(this.profile.settings.audio);
-    this.raceStage?.updateSettings(this.profile.settings);
+    this.stage?.updateSettings(this.profile.settings);
   }
 
   // --- Race flow ------------------------------------------------------------------------
@@ -549,6 +636,7 @@ export class App {
   /** Starts a race: the full field, or a one-on-one challenge against one rival. */
   private startRace(challenge: string | null = null): void {
     this.disposeRace();
+    this.currentActivity = null;
     this.challenge = challenge;
     const rival = challenge ? getRival(challenge) : RIVALS[this.profile.racesCompleted % RIVALS.length];
     const record = rival ? this.profile.rivals[rival.id] : undefined;
@@ -575,24 +663,35 @@ export class App {
   }
 
   private pauseRace(): void {
-    if (!this.raceStage || this.screen !== 'race') return;
-    this.raceStage.paused = true;
+    const stage = this.stage;
+    if (!stage || this.screen !== 'race') return;
+    stage.paused = true;
     this.setScreen('paused');
-    this.pause.update(this.profile.settings);
+    const activity = this.currentActivity;
+    this.pause.update(
+      this.profile.settings,
+      activity
+        ? activity.kind === 'explore'
+          ? { restart: 'Restart flight', quit: 'End flight' }
+          : { restart: 'Restart', quit: 'Quit to board' }
+        : {},
+    );
     this.pause.show();
     this.audio.updateEngine(0, 0, false, false);
   }
 
   private resumeRace(): void {
-    if (!this.raceStage || this.screen !== 'paused') return;
-    this.raceStage.paused = false;
+    const stage = this.stage;
+    if (!stage || this.screen !== 'paused') return;
+    stage.paused = false;
     this.setScreen('race');
     this.lastFrame = performance.now();
   }
 
   private restartRace(): void {
-    if (!this.raceStage) return;
-    this.raceStage.restart();
+    const stage = this.stage;
+    if (!stage) return;
+    stage.restart();
     this.setScreen('race');
   }
 
@@ -608,7 +707,230 @@ export class App {
   }
 
   private quitRace(): void {
-    this.goGarage();
+    if (this.currentActivity?.kind === 'explore' && this.flightStage) {
+      // Ending a free flight logs it: the discoveries are kept.
+      this.flightStage.paused = false;
+      this.flightStage.endFlight();
+      return;
+    }
+    if (this.currentActivity) this.goBoard();
+    else this.goGarage();
+  }
+
+  // --- Activities ---------------------------------------------------------------------------
+
+  /** Starts any activity from the flight board. */
+  private fly(activityId: string): void {
+    const activity = getActivity(activityId);
+    if (!activity) return;
+    this.profile = selectCircuit(selectActivity(this.profile, activity.id), activity.regionId);
+    this.persist();
+    switch (activity.kind) {
+      case 'race':
+        this.startRace();
+        break;
+      case 'trial':
+      case 'precision':
+        this.startSolo(activity);
+        break;
+      default:
+        this.startFreeFlight(activity);
+    }
+  }
+
+  private flyAgain(): void {
+    if (this.currentActivity) this.fly(this.currentActivity.id);
+    else this.goBoard();
+  }
+
+  private precisionCircuit(activity: PrecisionActivity): Circuit {
+    let circuit = this.precisionCircuits.get(activity.id);
+    if (!circuit) {
+      circuit = createPrecisionCircuit(this.circuit, activity);
+      this.precisionCircuits.set(activity.id, circuit);
+    }
+    return circuit;
+  }
+
+  /** Your best lap on a course if there is one, otherwise the club pace (recorded once per course). */
+  private trialGhost(regionId: string): GhostTrack {
+    const best = loadGhost(this.storage, regionId);
+    if (best) return best;
+    let club = this.clubGhosts.get(regionId);
+    if (!club) {
+      club = recordClubGhost(this.circuit, DEFAULT_BUILD);
+      this.clubGhosts.set(regionId, club);
+    }
+    return club;
+  }
+
+  /** A time trial or a precision run: the Grand Prix machinery, flown alone. */
+  private startSolo(activity: Extract<Activity, { kind: 'trial' | 'precision' }>): void {
+    this.disposeRace();
+    this.currentActivity = activity;
+    this.challenge = null;
+    const precision = activity.kind === 'precision';
+    this.raceStage = new RaceStage({
+      circuit: precision ? this.precisionCircuit(activity) : this.circuit,
+      renderer: this.renderer,
+      input: this.input,
+      hud: this.hud,
+      audio: this.audio,
+      setup: activeSetup(this.profile),
+      settings: this.profile.settings,
+      aiSkill: 1,
+      mode: activity.kind,
+      conditions: activity.conditions,
+      ghost: precision ? null : this.trialGhost(activity.regionId),
+      timeLimit: precision ? activity.timeLimit : undefined,
+      onPlayerFinished: () => this.finishSolo(),
+    });
+    this.audio.unlock();
+    this.audio.startEngine();
+    this.setScreen('race');
+  }
+
+  private startFreeFlight(activity: FreeFlightActivity): void {
+    this.disposeRace();
+    this.currentActivity = activity;
+    this.challenge = null;
+    this.flightStage = new FreeFlightStage({
+      activity,
+      circuit: this.circuit,
+      renderer: this.renderer,
+      input: this.input,
+      hud: this.hud,
+      audio: this.audio,
+      setup: activeSetup(this.profile),
+      settings: this.profile.settings,
+      discovered: new Set(this.profile.discoveries),
+      onFinished: (result) => this.finishFreeFlight(result),
+    });
+    this.audio.unlock();
+    this.audio.startEngine();
+    this.setScreen('race');
+  }
+
+  private finishSolo(): void {
+    const stage = this.raceStage;
+    const activity = this.currentActivity;
+    if (!stage || !activity || (activity.kind !== 'trial' && activity.kind !== 'precision')) return;
+    const run = stage.soloRun();
+    const circuit = stage.sim.circuit;
+    const completed = run.failed === null;
+    const value = activity.kind === 'trial' ? run.time : run.accuracy;
+    const highlights: ActivityResultsData['highlights'] = [];
+    if (activity.kind === 'trial') {
+      const ghost = this.trialGhost(activity.regionId);
+      const delta = run.time - ghost.time;
+      highlights.push(
+        { label: 'Lap', value: formatRaceTime(run.time) },
+        {
+          label: `vs ${ghost.label.toLowerCase()}`,
+          value: `${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(2)} s`,
+        },
+        {
+          label: 'Penalties',
+          value: run.time > run.rawTime ? `+${Math.round(run.time - run.rawTime)} s` : 'None',
+        },
+      );
+      // Your best lap becomes the ghost you chase next time.
+      const best = loadGhost(this.storage, activity.regionId);
+      if (run.lap && (!best || run.time < best.time)) saveGhost(this.storage, activity.regionId, run.lap);
+    } else {
+      highlights.push(
+        { label: 'Accuracy', value: `${Math.round(run.accuracy)}%` },
+        { label: 'Gates', value: `${run.gatesPassed}/${circuit.gates.length}` },
+        { label: 'Time', value: formatRaceTime(run.rawTime || stage.sim.clock) },
+      );
+    }
+    const failure =
+      run.failed === 'missed-gate'
+        ? 'Gate missed: run over'
+        : run.failed === 'crash'
+          ? 'Crashed: run over'
+          : run.failed === 'time'
+            ? 'Out of time'
+            : null;
+    this.completeActivity(
+      {
+        activityId: activity.id,
+        airframeId: this.profile.activeAircraft,
+        run: { value, completed, condition: 100 },
+        discoveries: [],
+        distance: circuit.length,
+      },
+      completed ? value : null,
+      failure,
+      highlights,
+    );
+  }
+
+  private finishFreeFlight(result: FreeFlightResult): void {
+    const activity = this.currentActivity;
+    if (!activity) return;
+    const highlights: ActivityResultsData['highlights'] = [];
+    let run: ActivityOutcome['run'] = null;
+    let failure: string | null = null;
+    if (activity.kind === 'show') {
+      run = { value: result.score, completed: result.completed, condition: 100 };
+      highlights.push(
+        { label: 'Figures', value: String(result.figures) },
+        { label: 'Kinds', value: `${result.variety}/6` },
+        { label: 'Best chain', value: String(result.bestChain) },
+        { label: 'Crashes', value: result.crashes > 0 ? String(result.crashes) : 'None' },
+      );
+    } else if (activity.kind === 'delivery') {
+      run = { value: result.time, completed: result.completed, condition: result.condition };
+      failure = result.failure === 'cargo-lost' ? 'Cargo lost' : result.completed ? null : 'Not delivered';
+      highlights.push(
+        { label: 'Time', value: formatRaceTime(result.time) },
+        { label: 'Cargo', value: `${result.condition}%` },
+        { label: 'Crashes', value: result.crashes > 0 ? String(result.crashes) : 'None' },
+      );
+    } else {
+      highlights.push(
+        { label: 'Found this flight', value: String(result.discoveries.length) },
+        { label: 'Distance', value: `${(result.distance / 1000).toFixed(1)} km` },
+        { label: 'Time aloft', value: formatRaceTime(result.time) },
+      );
+    }
+    this.completeActivity(
+      {
+        activityId: activity.id,
+        airframeId: this.profile.activeAircraft,
+        run,
+        discoveries: result.discoveries,
+        distance: result.distance,
+      },
+      run && !failure ? run.value : null,
+      failure,
+      highlights,
+    );
+  }
+
+  private completeActivity(
+    outcome: ActivityOutcome,
+    value: number | null,
+    failure: string | null,
+    highlights: ActivityResultsData['highlights'],
+  ): void {
+    const applied = applyActivityOutcome(this.profile, outcome);
+    this.profile = applied.profile;
+    this.persist();
+    this.setScreen('activity-results');
+    this.activityResults.update({
+      applied,
+      value,
+      failure,
+      highlights,
+      credits: this.profile.credits,
+      licence: licenceStatus(this.profile),
+    });
+    this.activityResults.show();
+    if (applied.medal > applied.previousMedal || applied.newBest || applied.discoveries.length > 0)
+      this.audio.personalBest();
+    this.audio.updateEngine(0.2, 0.2, false, false);
   }
 
   private finishRace(standings: Standing[]): void {
@@ -626,6 +948,8 @@ export class App {
       ringTotal: circuit.rings.length,
       overtakes: tracker.overtakes,
     };
+    // Every race goes in the aircraft's logbook.
+    this.profile = logFlight(this.profile, this.profile.activeAircraft, circuit.length);
     const applied = applyRaceOutcome(this.profile, {
       circuitId: circuit.id,
       position: player.position,
@@ -657,9 +981,11 @@ export class App {
   }
 
   private disposeRace(): void {
-    if (this.raceStage) {
-      this.raceStage.dispose();
+    const stage = this.stage;
+    if (stage) {
+      stage.dispose();
       this.raceStage = null;
+      this.flightStage = null;
       this.audio.stopEngine();
     }
     this.hud.hide();
@@ -700,6 +1026,25 @@ export class App {
                   style: stage.sim.style.snapshot(),
                 }
               : null,
+          activity: this.flightStage
+            ? {
+                id: this.flightStage.sim.activity.id,
+                kind: this.flightStage.sim.activity.kind,
+                phase: this.flightStage.sim.phase,
+                clock: this.flightStage.sim.clock,
+                score: this.flightStage.sim.tricks?.score ?? 0,
+                condition: this.flightStage.sim.condition,
+                nextStop: this.flightStage.sim.nextStop,
+                carrying: this.flightStage.sim.carrying,
+                found: this.flightStage.sim.found.size,
+                inBox: this.flightStage.sim.inBox,
+                altitude: this.flightStage.sim.flight.altitude,
+                speed: this.flightStage.sim.flight.speed,
+              }
+            : null,
+          licenceStars: licenceStatus(this.profile).stars,
+          discoveries: [...this.profile.discoveries],
+          activities: { ...this.profile.activities },
         };
       },
       getRenderInfo: () => ({
@@ -707,18 +1052,24 @@ export class App {
         textures: this.renderer.gl.info.memory.textures,
       }),
       setAutopilot: (enabled) => {
-        if (this.raceStage) this.raceStage.autopilot = enabled;
+        const stage = this.stage;
+        if (stage) stage.autopilot = enabled;
       },
       setTimeScale: (scale) => {
-        if (this.raceStage) this.raceStage.timeScale = Math.max(0.1, Math.min(20, scale));
+        const stage = this.stage;
+        if (stage) stage.timeScale = Math.max(0.1, Math.min(20, scale));
+      },
+      placeInShowBox: () => {
+        if (this.flightStage && this.screen === 'race') this.flightStage.placeInShowBox();
       },
       approachRing: (index, distance = 120) => {
         if (this.raceStage && this.screen === 'race') this.raceStage.approachRing(index, distance);
       },
       simulateToFinish: () => {
-        if (this.raceStage && this.screen === 'race') {
-          this.raceStage.autopilot = true;
-          this.raceStage.simulateToFinish();
+        const stage = this.stage;
+        if (stage && this.screen === 'race') {
+          stage.autopilot = true;
+          stage.simulateToFinish();
         }
       },
     };
