@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import type { Vector3 } from 'three';
 import type { CourseTheme } from '../course/themes';
 import { clamp01 } from '../core/math';
 

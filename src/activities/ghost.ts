@@ -1,4 +1,5 @@
-import { Quaternion, Vector3 } from 'three';
+import type { Vector3 } from 'three';
+import { Quaternion } from 'three';
 import type { AircraftBuild, AircraftSetup } from '../aircraft/build';
 import { isValidBuild } from '../aircraft/build';
 import { isValidPaint, type Paint } from '../aircraft/paint';
