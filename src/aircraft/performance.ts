@@ -39,6 +39,8 @@ export interface FlightParameters {
   boostCapacity: number;
   boostRechargeTime: number;
   durability: number;
+  /** Float gear: water is a runway rather than a hazard. */
+  floats: boolean;
 }
 
 export type RatingKey =
@@ -99,7 +101,7 @@ const solveMaxSpeed = (thrust: number, bias: number, dragArea: number): number =
 
 export const computeFlightParameters = (resolved: ResolvedBuild): FlightParameters => {
   const { airframe, frame, engine, prop, wings, tail, gear } = resolved;
-  const wingArea = airframe.wingScale * airframe.wingScale;
+  const wingArea = airframe.wingScale * airframe.wingScale * (airframe.wingSets ?? 1);
   const engines = engine.visual.twin ? 2 : 1;
   const mass =
     airframe.mass * frame.massFactor +
@@ -150,6 +152,7 @@ export const computeFlightParameters = (resolved: ResolvedBuild): FlightParamete
     boostCapacity: engine.boostCapacity,
     boostRechargeTime: engine.boostRechargeTime,
     durability: Math.max(0.4, soften(airframe.durability + frame.durability + gear.durability, 0.5, 1.4)),
+    floats: gear.visual === 'floats',
   };
 };
 

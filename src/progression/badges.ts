@@ -54,9 +54,28 @@ export const BADGES: readonly Badge[] = [
   },
 ];
 
-const badgeIndex = new Map(BADGES.map((badge) => [badge.id, badge]));
+/** Badges earned in activities rather than races (see progression/activities.ts). */
+export interface ActivityBadge {
+  id: string;
+  name: string;
+  goal: string;
+}
 
-export const getBadge = (id: string): Badge | undefined => badgeIndex.get(id);
+export const PATHFINDER_TARGET = 10;
+
+export const ACTIVITY_BADGES: readonly ActivityBadge[] = [
+  { id: 'display-team', name: 'Display Team', goal: 'Win gold at an air show' },
+  { id: 'air-mail', name: 'Air Mail', goal: 'Win gold on a delivery' },
+  { id: 'threader', name: 'Threader', goal: 'Win gold on a precision run' },
+  { id: 'pathfinder', name: 'Pathfinder', goal: `Make ${PATHFINDER_TARGET} discoveries` },
+];
+
+const badgeIndex = new Map<string, Badge | ActivityBadge>(
+  [...BADGES, ...ACTIVITY_BADGES].map((badge) => [badge.id, badge]),
+);
+
+/** Any badge, race or activity, by id (name and goal for the paint shop and results). */
+export const getBadge = (id: string): Badge | ActivityBadge | undefined => badgeIndex.get(id);
 
 export const isBadgeId = (id: unknown): id is string => typeof id === 'string' && badgeIndex.has(id);
 

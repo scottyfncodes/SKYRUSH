@@ -38,6 +38,10 @@ export const SWATCHES: readonly Swatch[] = [
   { id: 'solar', name: 'Solar Gold', color: 0xffb21f, badge: 'bullseye', trail: 0xffd98a },
   { id: 'dune', name: 'Dune Copper', color: 0xc98a4b, badge: 'canyon-skimmer', trail: 0xf6d7a8 },
   { id: 'neon', name: 'Neon Rose', color: 0xff3f8e, badge: 'combo-king', trail: 0xff9ac4 },
+  { id: 'display', name: 'Display Crimson', color: 0xd3203f, badge: 'display-team', trail: 0xffffff },
+  { id: 'postal', name: 'Air Mail Blue', color: 0x2c63c9, badge: 'air-mail', trail: 0xbcd3ff },
+  { id: 'jade', name: 'Threader Jade', color: 0x14a776, badge: 'threader', trail: 0x9ff0cf },
+  { id: 'signal', name: 'Signal Orange', color: 0xff7417, badge: 'pathfinder', trail: 0xffc08a },
 ];
 
 export type PatternId = 'plain' | 'split' | 'cheatline' | 'checker' | 'bands' | 'scallop' | 'salvage';
@@ -269,6 +273,21 @@ export const THEMES: readonly PaintTheme[] = [
       number: 13,
     },
   },
+  {
+    id: 'livery-barnstormer',
+    name: 'Barnstormer',
+    note: 'Sun-faded yellow with cherry scallops',
+    paint: {
+      primary: 'sunfade',
+      secondary: 'cherry',
+      accent: 'ink',
+      tips: 'cherry',
+      nose: 'cherry',
+      pattern: 'scallop',
+      insignia: 'bolt',
+      number: 8,
+    },
+  },
   // Earned themes: each uses a badge swatch (see progression/badges.ts).
   {
     id: 'livery-aurora',
@@ -334,6 +353,70 @@ export const THEMES: readonly PaintTheme[] = [
       number: 4,
     },
   },
+  {
+    id: 'livery-display',
+    name: 'Display Team',
+    note: 'Earned: gold at an air show',
+    badge: 'display-team',
+    paint: {
+      primary: 'display',
+      secondary: 'ivory',
+      accent: 'ivory',
+      tips: 'ivory',
+      nose: 'ivory',
+      pattern: 'scallop',
+      insignia: 'swallow',
+      number: 1,
+    },
+  },
+  {
+    id: 'livery-airmail',
+    name: 'Air Mail',
+    note: 'Earned: gold on a delivery',
+    badge: 'air-mail',
+    paint: {
+      primary: 'postal',
+      secondary: 'ivory',
+      accent: 'cherry',
+      tips: 'cherry',
+      nose: 'ivory',
+      pattern: 'cheatline',
+      insignia: 'chevron',
+      number: 31,
+    },
+  },
+  {
+    id: 'livery-threader',
+    name: 'Needle Point',
+    note: 'Earned: gold on a precision run',
+    badge: 'threader',
+    paint: {
+      primary: 'ivory',
+      secondary: 'graphite',
+      accent: 'jade',
+      tips: 'jade',
+      nose: 'jade',
+      pattern: 'split',
+      insignia: 'bolt',
+      number: 12,
+    },
+  },
+  {
+    id: 'livery-expedition',
+    name: 'Expedition',
+    note: 'Earned: ten discoveries',
+    badge: 'pathfinder',
+    paint: {
+      primary: 'signal',
+      secondary: 'ivory',
+      accent: 'ink',
+      tips: 'ink',
+      nose: 'ivory',
+      pattern: 'bands',
+      insignia: 'roundel',
+      number: 10,
+    },
+  },
 ];
 
 const swatchIndex = new Map(SWATCHES.map((swatch) => [swatch.id, swatch]));
@@ -355,6 +438,7 @@ export const FACTORY_THEMES: Record<string, string> = {
   'airframe-bush': 'livery-courier',
   'airframe-seaplane': 'livery-rescue',
   'airframe-cruiser': 'livery-glacier',
+  'airframe-stunt': 'livery-barnstormer',
   'airframe-custom': 'livery-salvage',
 };
 

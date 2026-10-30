@@ -250,6 +250,11 @@ export class StyleTracker {
     return this.award('near-miss', nearMissBase(this.skimMin, this.skimTime));
   }
 
+  /** A safe touchdown (floats on water): the current skim no longer counts as a near miss. */
+  touchedGround(): void {
+    this.skimFailed = true;
+  }
+
   /** Called after a respawn: an interrupted skim never pays out and the band must re-arm. */
   resetProximity(): void {
     this.inSkim = false;

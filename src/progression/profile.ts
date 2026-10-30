@@ -38,6 +38,7 @@ import { clamp, clamp01 } from '../core/math';
 import { isBadgeId } from './badges';
 import { RIVAL_IDS } from './rivals';
 import { DEFAULT_COURSE_ID, isCourseId } from '../course/courses';
+import { isActivityId, isDiscoveryId, type MedalTier } from '../activities/catalog';
 
 export const STARTING_CREDITS = 2500;
 export const MAX_HISTORY = 12;
@@ -114,6 +115,29 @@ export interface PlayerProfile {
   badgeProgress: Record<string, number>;
   /** Head-to-head challenge record against each rival pilot. */
   rivals: Record<string, RivalRecord>;
+  /** Best result and medal per activity id (see activities/catalog.ts). */
+  activities: Record<string, ActivityRecord>;
+  /** Discovery ids found in free flight (and on any other non-race flight). */
+  discoveries: string[];
+  /** Per-aircraft flight log, keyed by airframe id. */
+  logbook: Record<string, AircraftLog>;
+  /** Activity last opened on the flight board. */
+  selectedActivity: string;
+}
+
+export interface ActivityRecord {
+  /** Best value: a time (trials, deliveries), an accuracy (precision) or a score (shows). */
+  best: number | null;
+  medal: MedalTier;
+  runs: number;
+}
+
+export interface AircraftLog {
+  flights: number;
+  /** Kilometres flown. */
+  distance: number;
+  /** Medals won flying this aircraft (every tier counts once per activity). */
+  medals: number;
 }
 
 export interface RivalRecord {
@@ -165,8 +189,20 @@ export const createDefaultProfile = (): PlayerProfile => {
     badges: [],
     badgeProgress: {},
     rivals: {},
+    activities: {},
+    discoveries: [],
+    logbook: {},
+    selectedActivity: '',
   };
 };
+
+/**
+ * Licence stars: one per medal tier won in each activity (bronze 1, silver 2,
+ * gold 3) and one per discovery. Stars rank the pilot's licence and unlock items.
+ */
+export const licenceStars = (profile: Pick<PlayerProfile, 'activities' | 'discoveries'>): number =>
+  Object.values(profile.activities).reduce((sum, record) => sum + record.medal, 0) +
+  profile.discoveries.length;
 
 // --- Queries --------------------------------------------------------------------------------
 
@@ -202,6 +238,8 @@ export const isUnlockRuleMet = (profile: PlayerProfile, item: ShopItem): boolean
       return isOwned(profile, rule.airframe);
     case 'rival':
       return isOwned(profile, rule.airframe) || (profile.rivals[rule.rival]?.wins ?? 0) > 0;
+    case 'stars':
+      return licenceStars(profile) >= rule.count;
   }
 };
 
@@ -601,6 +639,41 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     }
   }
 
+  const activities: Record<string, ActivityRecord> = {};
+  if (typeof data.activities === 'object' && data.activities !== null && !Array.isArray(data.activities)) {
+    for (const [id, value] of Object.entries(data.activities as Record<string, unknown>)) {
+      if (!isActivityId(id) || typeof value !== 'object' || value === null) continue;
+      const record = value as Record<string, unknown>;
+      const best =
+        typeof record.best === 'number' && Number.isFinite(record.best) && record.best >= 0
+          ? record.best
+          : null;
+      activities[id] = {
+        best,
+        medal: clamp(positiveInt(record.medal), 0, 3) as MedalTier,
+        runs: positiveInt(record.runs),
+      };
+    }
+  }
+  const discoveries: string[] = [];
+  if (Array.isArray(data.discoveries)) {
+    for (const id of data.discoveries)
+      if (isDiscoveryId(id) && !discoveries.includes(id)) discoveries.push(id);
+  }
+  const logbook: Record<string, AircraftLog> = {};
+  if (typeof data.logbook === 'object' && data.logbook !== null && !Array.isArray(data.logbook)) {
+    for (const [id, value] of Object.entries(data.logbook as Record<string, unknown>)) {
+      if (!getAirframe(id) || typeof value !== 'object' || value === null) continue;
+      const log = value as Record<string, unknown>;
+      logbook[id] = {
+        flights: positiveInt(log.flights),
+        distance:
+          typeof log.distance === 'number' && Number.isFinite(log.distance) ? clamp(log.distance, 0, 1e7) : 0,
+        medals: positiveInt(log.medals),
+      };
+    }
+  }
+
   return {
     version: 2,
     credits,
@@ -626,6 +699,10 @@ export const sanitiseProfile = (raw: unknown): PlayerProfile => {
     badges,
     badgeProgress,
     rivals,
+    activities,
+    discoveries,
+    logbook,
+    selectedActivity: isActivityId(data.selectedActivity) ? data.selectedActivity : '',
   };
 };
 

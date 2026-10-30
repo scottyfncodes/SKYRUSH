@@ -42,7 +42,8 @@ export const NEUTRAL_INPUT: Readonly<FlightInput> = Object.freeze({
   airbrake: false,
 });
 
-export type GroundContact = 'none' | 'scrape' | 'crash';
+/** `splash`: float gear touching water, which is a runway for it rather than a hazard. */
+export type GroundContact = 'none' | 'scrape' | 'crash' | 'splash';
 
 export interface FlightState {
   position: Vector3;
@@ -68,11 +69,23 @@ export interface FlightState {
 export interface FlightEnvironment {
   terrainHeight: (x: number, z: number) => number;
   ceiling: number;
+  /** Air mass velocity (m/s, world frame). The aircraft flies relative to it; absent means still air. */
+  wind?: Vector3;
+  /** Roll disturbance from turbulence (rad/s), added to the commanded roll rate. */
+  rollGust?: number;
+  /** True where the ground under (x, z) is water (float gear can touch down there). */
+  isWater?: (x: number, z: number) => boolean;
 }
 
 export interface FlightAssist {
   /** 0..1, how strongly the aircraft self-levels and damps. */
   strength: number;
+  /**
+   * Aerobatic control: rate control on every axis (loops and rolls are possible),
+   * with the wings levelled only near upright so inverted flight and loops hold.
+   * `strength` still sets how firmly the nose and wings settle when the stick is centred.
+   */
+  aerobatic?: boolean;
 }
 
 export const DEFAULT_ASSIST: FlightAssist = { strength: 0.6 };
@@ -91,6 +104,8 @@ const ASSISTED_ROLL_OUT_GAIN = 2;
 const ASSISTED_ROLL_OUT_BOOST = 1.5;
 /** Assisted steering: target damping ratio of the bank-angle loop. */
 const ASSISTED_BANK_DAMPING_RATIO = 0.85;
+/** Aerobatic control: the wings and nose self-level only within this bank (≈63°). */
+const AEROBATIC_LEVEL_BANK = 1.1;
 const _worldYaw = new Quaternion();
 
 const _forward = new Vector3();
@@ -218,6 +233,10 @@ export const stepFlight = (
   if (state.heat >= 0.999) state.overheated = true;
   if (state.overheated && state.heat < OVERHEAT_CLEAR_THRESHOLD) state.overheated = false;
 
+  // Fly relative to the air mass: everything below works on airspeed until the wind is added back.
+  const wind = env.wind;
+  if (wind) state.velocity.sub(wind);
+
   // --- Orientation and control authority -----------------------------------------
   getForward(state, _forward);
   getUp(state, _up);
@@ -237,7 +256,8 @@ export const stepFlight = (
   const aoaPenalty = 1 - 0.5 * smoothstep(0.35, 1.1, state.angleOfAttack);
 
   const stability = params.stability * (0.35 + 0.65 * assistStrength);
-  const assisted = assistStrength > 0.05;
+  const aerobatic = assist.aerobatic === true;
+  const assisted = assistStrength > 0.05 && !aerobatic;
   let pitchTarget = input.pitch * params.pitchRate * authority * aoaPenalty;
   let rollTarget: number;
   let yawTarget = input.yaw * params.yawRate * authority;
@@ -281,14 +301,18 @@ export const stepFlight = (
     // Direct control: roll input commands a roll rate and only a mild coordinated yaw helps.
     rollTarget = input.roll * params.rollRate * authority * aoaPenalty;
     yawTarget += bankSin * Math.abs(Math.cos(state.bank)) * 0.5 * authority;
-    if (Math.abs(input.roll) < 0.05) {
+    // Aerobatic control only levels the wings near upright, so inverted flight and loops hold.
+    const levelBank = !aerobatic || Math.abs(state.bank) < AEROBATIC_LEVEL_BANK;
+    if (Math.abs(input.roll) < 0.05 && levelBank) {
       const level = clamp(-state.bank * 1.8 * stability, -params.rollRate * 0.6, params.rollRate * 0.6);
       rollTarget += level * authority;
     }
   }
+  if (env.rollGust) rollTarget += env.rollGust;
 
-  // Stability assistance: settle the nose toward level when the stick is centred.
-  if (Math.abs(input.pitch) < 0.05) {
+  // Stability assistance: settle the nose toward level when the stick is centred
+  // (aerobatic control leaves a vertical line or an inverted attitude alone).
+  if (Math.abs(input.pitch) < 0.05 && (!aerobatic || Math.abs(state.bank) < AEROBATIC_LEVEL_BANK)) {
     const targetPitch = 0.03; // slight nose-up bias keeps cruise level despite tiny sink.
     const level = clamp((targetPitch - state.pitchAngle) * 1.2 * stability, -0.5, 0.5);
     pitchTarget += level * authority * Math.cos(state.bank);
@@ -364,8 +388,9 @@ export const stepFlight = (
   }
 
   // --- Integrate position ------------------------------------------------------------
-  state.position.addScaledVector(state.velocity, dt);
   state.speed = state.velocity.length();
+  if (wind) state.velocity.add(wind);
+  state.position.addScaledVector(state.velocity, dt);
 
   // --- Ceiling and ground ---------------------------------------------------------------
   if (state.position.y > env.ceiling) {
@@ -376,7 +401,19 @@ export const stepFlight = (
   const ground = env.terrainHeight(state.position.x, state.position.z);
   state.altitude = state.position.y - ground;
   state.groundContact = 'none';
-  if (state.altitude < CONTACT_HEIGHT) {
+  if (state.altitude < CONTACT_HEIGHT && params.floats && env.isWater?.(state.position.x, state.position.z)) {
+    // Floats on water: settle onto the surface and plane along it. A steep dive still crashes.
+    if (-state.velocity.y < 14 && _forward.y > -0.5) {
+      state.groundContact = 'splash';
+      state.position.y = ground + CONTACT_HEIGHT;
+      state.velocity.y = Math.max(state.velocity.y, 0);
+      state.velocity.multiplyScalar(1 - 0.25 * dt);
+      if (state.pitchAngle < 0) state.rates.x = Math.max(state.rates.x, 0.4);
+      state.altitude = CONTACT_HEIGHT;
+    } else {
+      state.groundContact = 'crash';
+    }
+  } else if (state.altitude < CONTACT_HEIGHT) {
     const descentRate = -state.velocity.y;
     const scrapeTolerance = 9 * Math.sqrt(params.durability);
     const nosePointingDown = _forward.y < -0.35;
@@ -386,10 +423,12 @@ export const stepFlight = (
       state.velocity.y = Math.max(state.velocity.y, 0) + 4;
       state.velocity.multiplyScalar(0.8);
       state.rates.x = Math.max(state.rates.x, 0.6);
-      state.speed = state.velocity.length();
       state.altitude = CONTACT_HEIGHT;
     } else {
       state.groundContact = 'crash';
     }
+  }
+  if (state.groundContact === 'scrape' || state.groundContact === 'splash') {
+    state.speed = wind ? _dir.subVectors(state.velocity, wind).length() : state.velocity.length();
   }
 };

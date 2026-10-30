@@ -118,6 +118,16 @@ const _q = new Quaternion();
 
 const makeInput = (): FlightInput => ({ ...NEUTRAL_INPUT });
 
+/** The flight environment for a course: its terrain, ceiling and (on water courses) where the water is. */
+export const flightEnvironmentFor = (circuit: Circuit): FlightEnvironment => {
+  const { terrain, seaLevel } = circuit;
+  return {
+    terrainHeight: terrain.heightAt,
+    ceiling: circuit.ceiling,
+    isWater: seaLevel === null ? undefined : (x, z) => terrain.groundAt(x, z) < seaLevel,
+  };
+};
+
 export class RaceSimulation {
   readonly racers: Racer[];
   readonly player: Racer;
@@ -147,7 +157,7 @@ export class RaceSimulation {
     this.outOfBoundsPenalty = options.outOfBoundsPenalty ?? 2;
     this.aiSkill = options.aiSkill ?? 1;
     this.countdown = options.countdownSeconds ?? 3;
-    this.environment = { terrainHeight: circuit.terrain.heightAt, ceiling: circuit.ceiling };
+    this.environment = flightEnvironmentFor(circuit);
     this.lastCountdownValue = Math.ceil(this.countdown) + 1;
 
     const spawnForward = new Vector3(0, 0, 1).applyQuaternion(circuit.spawn.orientation);
@@ -337,8 +347,10 @@ export class RaceSimulation {
 
     // A gentle scrape bleeds speed; repeated scrapes or a stall on the ground would leave the
     // aircraft sliding along the terrain forever, so being grounded too long counts as a crash.
+    // Floats planing on the water are taxiing, not stuck.
     const grounded =
       flight.altitude < GROUNDED_ALTITUDE &&
+      flight.groundContact !== 'splash' &&
       (flight.groundContact === 'scrape' || flight.speed < racer.params.stallSpeed);
     racer.groundedTimer = grounded ? racer.groundedTimer + dt : 0;
     const stuck = racer.groundedTimer >= GROUNDED_SECONDS;
@@ -358,6 +370,9 @@ export class RaceSimulation {
     if (flight.groundContact === 'scrape') {
       this.events.push({ type: 'scrape', racerId: config.id, isPlayer });
       if (isPlayer && !racer.finished) this.breakCombo('scrape');
+    } else if (flight.groundContact === 'splash' && isPlayer) {
+      // A float touchdown is safe, but it is not a near miss.
+      this.style.touchedGround();
     }
 
     const horizontal = Math.hypot(flight.position.x, flight.position.z);

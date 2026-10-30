@@ -240,6 +240,41 @@ export const FACTORY_SETUPS: readonly FactorySetup[] = [
       gear: 'gear-light',
     },
   },
+  // Starling
+  {
+    id: 'stunt-display',
+    name: 'Display',
+    note: 'The factory show aircraft: radial, four blades, clipped wings',
+    build: {
+      airframe: 'airframe-stunt',
+      nose: 'nose-stunt',
+      cabin: 'cabin-stunt',
+      boom: 'boom-stunt',
+      frame: 'frame-light',
+      engine: 'engine-wasp',
+      prop: 'prop-four',
+      wings: 'wings-compact',
+      tail: 'tail-standard',
+      gear: 'gear-light',
+    },
+  },
+  {
+    id: 'stunt-barnstormer',
+    name: 'Barnstormer',
+    note: 'An inline engine and elliptical wings for a faster show',
+    build: {
+      airframe: 'airframe-stunt',
+      nose: 'nose-stunt',
+      cabin: 'cabin-stunt',
+      boom: 'boom-stunt',
+      frame: 'frame-standard',
+      engine: 'engine-tuned',
+      prop: 'prop-three',
+      wings: 'wings-elliptic',
+      tail: 'tail-standard',
+      gear: 'gear-light',
+    },
+  },
 ];
 
 export const factorySetupsFor = (airframeId: string): FactorySetup[] =>

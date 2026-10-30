@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIVITY_BADGES,
   BADGES,
   BULLSEYE_TARGET,
   badgesEarned,
@@ -54,7 +55,7 @@ const outcome = (style?: RunStyleStats): RaceOutcome => ({
 
 describe('badge catalogue', () => {
   it('every badge unlocks exactly one livery theme and one paint swatch', () => {
-    for (const badge of BADGES) {
+    for (const badge of [...BADGES, ...ACTIVITY_BADGES]) {
       const livery = liveryForBadge(badge.id);
       expect(livery, badge.id).toBeDefined();
       expect(THEMES.filter((l) => l.badge === badge.id)).toHaveLength(1);
@@ -62,7 +63,7 @@ describe('badge catalogue', () => {
     }
     // Every badge-gated theme and swatch points at a real badge.
     for (const gated of [...THEMES, ...SWATCHES].filter((l) => l.badge)) {
-      expect(BADGES.some((b) => b.id === gated.badge)).toBe(true);
+      expect([...BADGES, ...ACTIVITY_BADGES].some((b) => b.id === gated.badge)).toBe(true);
     }
   });
 
