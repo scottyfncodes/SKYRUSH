@@ -2588,10 +2588,6 @@ p {
   .rotate-prompt {
     display: flex;
   }
-  /* Whatever is underneath is out of reach, for touch and for assistive technology alike. */
-  #ui > :not(.rotate-prompt) {
-    visibility: hidden;
-  }
 }
 
 /* --- Responsive: laptop-height screens -------------------------------------------------------- */
