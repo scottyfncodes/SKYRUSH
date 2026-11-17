@@ -1,7 +1,7 @@
 /* ===========================================================================
    SKYRUSH design system
    Deep graphite + midnight navy surfaces, warm white type, amber/cyan accents.
-   Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48. Type scale: 11 / 13 / 15 / 18 / 24 / 36 / 64.
+   Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48. Type scale: 12 / 13 / 15 / 18 / 24 / 36 / 64; nothing a player reads is set below 12 px.
    =========================================================================== */
 
 :root {
@@ -25,6 +25,9 @@
   --cyan: #7cc5b4;
   --orange: #e0442a;
   --vermilion: #e0442a;
+  /* Vermilion as a fill under ivory lettering: a deeper ink of the same hue, 4.6:1 with --ivory. */
+  --vermilion-fill: #bf341d;
+  --vermilion-fill-hover: #ab2d18;
   --red: #ef6b55;
   --green: #7cc5b4;
   --teal: #1f6f6b;
@@ -177,13 +180,13 @@ p {
   transform: none;
 }
 .btn--primary {
-  background: var(--vermilion);
-  border-color: var(--vermilion);
+  background: var(--vermilion-fill);
+  border-color: var(--vermilion-fill);
   color: var(--ivory);
 }
 .btn--primary:hover {
-  background: #ea563c;
-  border-color: #ea563c;
+  background: var(--vermilion-fill-hover);
+  border-color: var(--vermilion-fill-hover);
 }
 .btn--primary:disabled {
   background: var(--graphite-600);
@@ -228,7 +231,7 @@ p {
 
 .eyebrow {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--amber);
@@ -236,7 +239,7 @@ p {
 }
 
 .panel-title {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -342,7 +345,7 @@ p {
 }
 .menu-aircraft__label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -383,7 +386,7 @@ p {
   gap: 2px;
 }
 .stat__label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -397,7 +400,7 @@ p {
   position: absolute;
   right: calc(var(--space-5) + var(--safe-right));
   bottom: calc(var(--space-4) + var(--safe-bottom));
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -464,7 +467,7 @@ p {
 }
 .course-card__meta {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .course-grid {
@@ -537,7 +540,7 @@ p {
 }
 .topbar__title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.32em;
   text-transform: uppercase;
   color: var(--ivory);
@@ -555,7 +558,7 @@ p {
   border-radius: var(--radius-s);
 }
 .topbar__label {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -635,7 +638,7 @@ p {
   border-right: 1px solid var(--border);
   background: transparent;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -686,13 +689,13 @@ p {
 }
 .slot-chip__label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .slot-chip__part {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.15;
   color: var(--text);
@@ -721,7 +724,7 @@ p {
 .list-heading {
   margin: var(--space-2) 0 2px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -741,7 +744,7 @@ p {
 }
 .list-divider {
   margin-top: var(--space-2);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   font-style: italic;
   font-family: var(--font-serif);
@@ -805,7 +808,7 @@ p {
   justify-content: space-between;
   gap: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -917,9 +920,13 @@ p {
   font-weight: 600;
 }
 .theme-card__note {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1.25;
+}
+/* A locked theme is dimmed as a whole; its note says how to earn it, so it has to stay readable. */
+.theme-card.is-locked .theme-card__note {
+  color: var(--text);
 }
 .paint-slots {
   display: grid;
@@ -936,7 +943,7 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-dim);
   cursor: pointer;
 }
@@ -1069,7 +1076,7 @@ p {
 }
 .nameplate__type {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--ivory);
@@ -1111,7 +1118,7 @@ p {
   gap: 2px 12px;
   padding: 3px 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   text-shadow: none;
@@ -1181,7 +1188,7 @@ p {
   grid-column: 3;
   grid-row: 1;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-align: right;
 }
@@ -1214,7 +1221,7 @@ p {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(23, 35, 59, 0.75);
   border-top: 1px solid var(--paper-line);
   padding-top: 4px;
@@ -1286,7 +1293,7 @@ p {
 }
 .detail__facts dt {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1337,7 +1344,7 @@ p {
   transform: translate(-50%, 0);
 }
 .garage-toast[data-tone='bad'] {
-  background: var(--vermilion);
+  background: var(--vermilion-fill);
   color: var(--ivory);
 }
 
@@ -1471,7 +1478,7 @@ p {
 }
 .rival-card__temperament {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1515,7 +1522,7 @@ p {
 }
 .rival-card__facts dt {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1599,7 +1606,7 @@ p {
   border-radius: var(--radius-s);
 }
 .fact__label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1810,7 +1817,7 @@ p {
   min-width: 0;
 }
 .highlight__label {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1832,7 +1839,7 @@ p {
   top: 6px;
   right: 6px;
   padding: 1px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .chip--pop {
   animation: chip-pop 0.5s 0.2s cubic-bezier(0.2, 1.6, 0.4, 1) both;
@@ -2089,7 +2096,7 @@ p {
   gap: var(--space-2);
 }
 .meter__label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -2428,7 +2435,7 @@ p {
   left: 50%;
   bottom: -20px;
   transform: translateX(-50%);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   color: var(--text-muted);
   white-space: nowrap;
@@ -2463,7 +2470,7 @@ p {
   left: 50%;
   top: 10px;
   transform: translateX(-50%);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--text);
 }
@@ -2608,7 +2615,7 @@ p {
       calc(var(--space-2) + var(--safe-bottom)) calc(var(--space-3) + var(--safe-left));
   }
   .menu-panel {
-    gap: var(--space-3);
+    gap: var(--space-2);
     padding-left: var(--space-3);
   }
   .brand__title {
@@ -2634,15 +2641,20 @@ p {
     font-size: 15px;
   }
   .course-select {
-    width: 300px;
+    width: 332px;
     margin-left: 0;
-    grid-template-columns: 28px 1fr 28px;
+    grid-template-columns: 44px 1fr 44px;
   }
   .course-select__arrow {
-    width: 28px;
+    width: 44px;
     height: 44px;
   }
   .course-select__dots {
+    display: none;
+  }
+  /* The course card just above already names the course; on a short screen the caption
+     would sit on top of the stats row. */
+  .menu-footer {
     display: none;
   }
   .menu-course .course-card {
@@ -2657,7 +2669,7 @@ p {
     padding: 4px var(--space-2);
   }
   .menu-course .course-card__mood {
-    font-size: 11px;
+    font-size: 12px;
   }
   .course-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2665,7 +2677,7 @@ p {
   }
   .course-card__mood,
   .course-grid .course-card__meta {
-    font-size: 10px;
+    font-size: 12px;
   }
   .course-grid .course-card__body {
     padding: 4px var(--space-2) var(--space-2);
@@ -2675,11 +2687,11 @@ p {
   }
   .topbar {
     top: calc(var(--space-2) + var(--safe-top));
-    height: 36px;
+    height: 44px;
   }
   .topbar .btn,
   .garage-right .btn {
-    min-height: 36px;
+    min-height: 44px;
     padding: 0 var(--space-3);
     font-size: 12px;
   }
@@ -2690,28 +2702,34 @@ p {
     display: none;
   }
   .screen--garage {
-    --left-w: 240px;
+    --left-w: 252px;
     --right-w: 196px;
     --gutter: var(--space-2);
   }
   .garage-left,
   .garage-right {
-    top: calc(50px + var(--safe-top));
+    top: calc(58px + var(--safe-top));
     bottom: calc(var(--space-2) + var(--safe-bottom));
     padding: var(--space-2);
     gap: 6px;
   }
   .section-tab {
-    min-height: 32px;
-    font-size: 10px;
-    letter-spacing: 0.04em;
+    min-height: 44px;
+    letter-spacing: 0;
   }
   .slot-chip {
     min-height: 36px;
-    padding: 3px 5px;
+    padding: 3px 4px;
   }
-  .slot-chip__part {
-    font-size: 10px;
+  /* "Propeller" has to fit a third of the panel at 12 px. */
+  .slot-chip__label {
+    letter-spacing: 0;
+  }
+  .list-heading {
+    letter-spacing: 0.1em;
+  }
+  .part-card__meta {
+    letter-spacing: 0.04em;
   }
   .part-card {
     min-height: 44px;
@@ -2722,7 +2740,7 @@ p {
     font-size: 13px;
   }
   .part-card__meta {
-    font-size: 9px;
+    font-size: 12px;
   }
   .part-card__art {
     width: 56px;
@@ -2750,19 +2768,19 @@ p {
   }
   .stat-row__label,
   .stat-row__value {
-    font-size: 11px;
+    font-size: 12px;
   }
   .stat-row__delta {
-    font-size: 10px;
+    font-size: 12px;
   }
   .stat-bar {
     height: 3px;
   }
   .nameplate {
-    top: calc(48px + var(--safe-top));
+    top: calc(56px + var(--safe-top));
   }
   .nameplate__type {
-    font-size: 9px;
+    font-size: 12px;
     padding: 2px 6px;
   }
   .nameplate__name {
@@ -2770,11 +2788,11 @@ p {
     margin-top: 2px;
   }
   .nameplate__character {
-    font-size: 11px;
+    font-size: 12px;
     margin-top: 2px;
   }
   .nameplate__donors {
-    font-size: 8px;
+    font-size: 12px;
     gap: 0 8px;
     margin-top: 3px;
     padding: 2px 6px;
@@ -2796,7 +2814,7 @@ p {
     display: none;
   }
   .detail__facts {
-    font-size: 11px;
+    font-size: 12px;
     gap: 0 var(--space-2);
   }
   /* Keep the card short so the aircraft keeps most of the space: name, one fact, the action. */
@@ -2812,16 +2830,16 @@ p {
   }
   .detail__actions .btn {
     min-width: 0;
-    min-height: 38px;
+    min-height: 44px;
     font-size: 12px;
     padding: 0 var(--space-3);
   }
   .detail__note {
-    font-size: 11px;
+    font-size: 12px;
     flex-basis: 100%;
   }
   .garage-toast {
-    top: calc(120px + var(--safe-top));
+    top: calc(128px + var(--safe-top));
     font-size: 12px;
   }
   .reveal {
@@ -2906,7 +2924,7 @@ p {
   }
   .detail__desc--keep {
     display: block;
-    font-size: 11px;
+    font-size: 12px;
     margin: 0;
   }
   .highlight {
@@ -3113,7 +3131,7 @@ p {
 }
 .board-row__kind {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--amber);
@@ -3222,7 +3240,7 @@ p {
   gap: 6px;
 }
 .target__label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -3306,7 +3324,7 @@ p {
   color: var(--text);
 }
 .medal-ladder__name {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -3393,7 +3411,7 @@ p {
   opacity: 0.9;
 }
 .hud-wind__label {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -3436,7 +3454,7 @@ p {
     font-size: 22px;
   }
   .board-row__summary {
-    grid-template-columns: 78px minmax(0, 1fr) auto;
+    grid-template-columns: 84px minmax(0, 1fr) auto;
     min-height: 48px;
     gap: var(--space-2);
   }
@@ -3444,8 +3462,7 @@ p {
     display: none;
   }
   .board-row__kind {
-    font-size: 10px;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.02em;
   }
   .board-row__title {
     font-size: 16px;
@@ -3562,5 +3579,47 @@ p {
   }
   .menu-actions .btn--ghost {
     grid-column: 1 / 3;
+  }
+}
+
+/* The shortest phones (iPhone SE landscape): keep the whole menu, stats included, on one screen. */
+@media (max-height: 380px) {
+  .brand__eyebrow {
+    margin-bottom: 0;
+  }
+  .brand__title {
+    font-size: 34px;
+  }
+}
+
+/* --- Touch: every control a thumb lands on is at least 44 px ------------------------------------
+   Sizes above are tuned for a pointer; these apply wherever the primary input is a finger. */
+
+@media (pointer: coarse) {
+  .course-select__arrow,
+  .board-side .course-select__arrow {
+    width: 44px;
+  }
+  .board-side .course-select {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+  .topbar .btn,
+  .section-tab,
+  .setup-name,
+  .setup-save .btn,
+  .setting__range,
+  .setting--toggle {
+    min-height: 44px;
+  }
+}
+@media (pointer: coarse) and (min-height: 481px) {
+  /* Keep the course card on the title's left edge with the wider arrow beside it. */
+  .menu-panel {
+    padding-left: 44px;
+  }
+  .course-select {
+    grid-template-columns: 44px 1fr 44px;
+    width: 368px;
+    margin-left: -52px;
   }
 }
